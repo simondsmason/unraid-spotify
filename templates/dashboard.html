@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+{% if not is_configured %}
+<div class="card">
+    <div class="empty-state">
+        <h3>⚠️ Configuration Required</h3>
+        <p><strong>Spotify Client ID is not configured.</strong></p>
+        <br>
+        <p>To configure:</p>
+        <ol style="text-align: left; max-width: 600px; margin: 1rem auto;">
+            <li>Set <code>SPOTIFY_CLIENT_ID</code> environment variable, OR</li>
+            <li>Add <code>client_id</code> to <code>spotify_config.json</code> in the data directory</li>
+        </ol>
+        <p style="margin-top: 1rem;"><strong>Config file location:</strong><br>
+        <code>{{ config.web.host if config.web else '0.0.0.0' }}:{{ config.web.port if config.web else 8081 }}/data/spotify_config.json</code></p>
+    </div>
+</div>
+{% elif not is_authenticated %}
+<div class="card">
+    <div class="empty-state">
+        <h3>Welcome to Spotify Playlist Manager</h3>
+        <p>Click the button below to connect to your Spotify account and start managing your playlists.</p>
+        <br>
+        <a href="/login" class="btn">Login to Spotify</a>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <h2>Your Playlists</h2>
+    {% if playlists %}
+    <table>
+        <thead>
+            <tr>
+                <th>Image</th>
+                <th>Name</th>
+                <th>Owner</th>
+                <th>Tracks</th>
+                <th>Visibility</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for playlist in playlists %}
+            <tr>
+                <td>
+                    {% if playlist.images and playlist.images|length > 0 %}
+                    <img src="{{ playlist.images[0].url }}" alt="{{ playlist.name }}" class="playlist-image">
+                    {% else %}
+                    <div class="playlist-image" style="background: #1db954; display: flex; align-items: center; justify-content: center; color: white; font-size: 1.5rem;">🎵</div>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{{ playlist.external_urls.spotify }}" target="_blank" class="playlist-link">
+                        {{ playlist.name }}
+                    </a>
+                </td>
+                <td>{{ playlist.owner.display_name }}</td>
+                <td>{{ playlist.tracks.total }} tracks</td>
+                <td>
+                    {% if playlist.public %}
+                    <span class="badge badge-public">Public</span>
+                    {% else %}
+                    <span class="badge badge-private">Private</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{{ playlist.external_urls.spotify }}" target="_blank" class="btn" style="padding: 0.5rem 1rem; font-size: 0.85rem;">Open in Spotify</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <h3>No Playlists Found</h3>
+        <p>You don't have any playlists yet, or there was an error loading them.</p>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

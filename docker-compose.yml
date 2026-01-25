@@ -1,0 +1,29 @@
+name: spotify-playlist-manager
+services:
+  spotify-playlist-manager:
+    container_name: spotify-playlist-manager
+    image: spotify-playlist-manager:latest
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    network_mode: bridge
+    volumes:
+      - /mnt/user/appdata/spotify-playlist-manager:/app/data
+    environment:
+      - DATA_DIR=/app/data
+      - WEB_PORT=8081
+      # Optional: Set these if you want to hardcode credentials
+      # - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
+      # - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
+      # - SPOTIFY_REDIRECT_URI=http://your-unraid-ip:8081/callback
+    labels:
+      - "net.unraid.docker.icon=https://developer.spotify.com/assets/branding-guidelines/icon3@2x.png"
+      - "net.unraid.docker.managed=dockerman"
+      - "net.unraid.docker.webui=http://[IP]:[PORT:8081]"
+      - "com.spotify-playlist-manager.environment=production"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/api/status')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s

@@ -1,0 +1,47 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+!README.md
+
+# Deployment (Windows)
+Project - Deployment/
+start_spotify.bat
+deploy_to_desktop.ps1
+
+# Data (will be mounted as volume)
+data/
+*.json
+!spotify_config.json
+
+# Logs
+*.log
