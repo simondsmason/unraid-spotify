@@ -122,3 +122,4 @@ pip install -r requirements.txt
 - **1.084** - 2026-02-16 - Capped 429 Retry-After to 30s max; fail fast instead of sleeping for hours on heavy rate limits
 - **1.085** - 2026-02-16 - Fixed pagination: rewrite next URL to /me/playlists (Spotify returns /users/{id}/playlists which is blocked in Dev Mode)
 - **1.09** - 2026-02-26 - Added Ratio Mix preset: slider to set A/B percentage split, maximises output while maintaining ratio
+- **1.091** - 2026-02-26 - Ratio slider moved to its own card above Mixing Method; slider labels show selected playlist names

@@ -68,6 +68,18 @@
         </div>
     </div>
 
+    <!-- Ratio Slider (shown when Ratio Mix preset is selected) -->
+    <div class="card" id="ratioCard" style="display: none;">
+        <h2>Ratio</h2>
+        <div class="ratio-slider-container" id="ratioSliderContainer">
+            <input type="range" id="ratioSlider" name="ratio_pct" min="0" max="100" value="50" class="ratio-slider">
+            <div class="ratio-labels">
+                <span id="ratioLabelA">Playlist A: 50%</span>
+                <span id="ratioLabelB">Playlist B: 50%</span>
+            </div>
+        </div>
+    </div>
+
     <!-- Mixing Mode: Presets or Rules -->
     <div class="card">
         <h2>Mixing Method</h2>
@@ -101,13 +113,6 @@
                 <div class="preset-content">
                     <h4>Ratio Mix</h4>
                     <p>Set the percentage of tracks from each playlist. The mixer takes as many tracks as possible while maintaining the ratio.</p>
-                    <div class="ratio-slider-container" id="ratioSliderContainer" onclick="event.preventDefault(); event.stopPropagation();">
-                        <input type="range" id="ratioSlider" name="ratio_pct" min="0" max="100" value="50" class="ratio-slider">
-                        <div class="ratio-labels">
-                            <span id="ratioLabelA">A: 50%</span>
-                            <span id="ratioLabelB">B: 50%</span>
-                        </div>
-                    </div>
                 </div>
             </label>
         </div>
@@ -309,8 +314,17 @@
         modeRules.addEventListener('change', updateMode);
     }
 
-    // --- Preset selection highlighting ---
+    // --- Preset selection highlighting + ratio card visibility ---
     var presetOptions = document.querySelectorAll('.preset-option');
+    var ratioCard = document.getElementById('ratioCard');
+
+    function updateRatioCardVisibility() {
+        var selected = document.querySelector('input[name="preset"]:checked');
+        if (ratioCard) {
+            ratioCard.style.display = (selected && selected.value === 'ratio') ? '' : 'none';
+        }
+    }
+
     presetOptions.forEach(function(option) {
         var radio = option.querySelector('input[type="radio"]');
         radio.addEventListener('change', function() {
@@ -318,18 +332,29 @@
             if (radio.checked) {
                 option.classList.add('selected');
             }
+            updateRatioCardVisibility();
         });
     });
+
+    updateRatioCardVisibility();
 
     // --- Ratio Slider ---
     var ratioSlider = document.getElementById('ratioSlider');
     var ratioLabelA = document.getElementById('ratioLabelA');
     var ratioLabelB = document.getElementById('ratioLabelB');
+    var playlistAInput = document.getElementById('playlist_a_input');
+    var playlistBInput = document.getElementById('playlist_b_input');
+
+    function getPlaylistName(inputEl, fallback) {
+        return (inputEl && inputEl.value) ? inputEl.value : fallback;
+    }
 
     function updateRatioLabels() {
         var val = parseInt(ratioSlider.value);
-        ratioLabelA.textContent = 'A: ' + val + '%';
-        ratioLabelB.textContent = 'B: ' + (100 - val) + '%';
+        var nameA = getPlaylistName(playlistAInput, 'Playlist A');
+        var nameB = getPlaylistName(playlistBInput, 'Playlist B');
+        ratioLabelA.textContent = nameA + ': ' + val + '%';
+        ratioLabelB.textContent = nameB + ': ' + (100 - val) + '%';
         ratioSlider.style.background = 'linear-gradient(to right, #1db954 0%, #1db954 ' + val + '%, #666 ' + val + '%, #666 100%)';
     }
 
@@ -337,6 +362,10 @@
         ratioSlider.addEventListener('input', updateRatioLabels);
         updateRatioLabels();
     }
+
+    // Update ratio labels when playlist selections change
+    if (playlistAInput) playlistAInput.addEventListener('blur', updateRatioLabels);
+    if (playlistBInput) playlistBInput.addEventListener('blur', updateRatioLabels);
 
     // --- Progress Modal: intercept form submit ---
     var mixerForm = document.getElementById('mixerForm');
