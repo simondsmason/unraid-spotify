@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}All Playlists{% endblock %}
+
+{% block content %}
+{% if not is_authenticated %}
+<div class="card">
+    <div class="empty-state" style="padding: 3rem 2rem;">
+        <h3>Not Connected</h3>
+        <p>Please <a href="/login" class="playlist-link">connect to Spotify</a> to view your playlists.</p>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <h2>Your Playlists ({{ playlists|length }})</h2>
+    {% if playlists %}
+    <table>
+        <thead>
+            <tr>
+                <th>Image</th>
+                <th>Name</th>
+                <th>Owner</th>
+                <th>Tracks</th>
+                <th>Visibility</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for playlist in playlists %}
+            <tr>
+                <td>
+                    {% if playlist.images and playlist.images|length > 0 %}
+                    <img src="{{ playlist.images[0].url }}" alt="{{ playlist.name }}" class="playlist-image">
+                    {% else %}
+                    <div class="playlist-image" style="background: #1db954; display: flex; align-items: center; justify-content: center; color: white; font-size: 1.5rem;">&#127925;</div>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{{ playlist.external_urls.spotify }}" target="_blank" class="playlist-link">
+                        {{ playlist.name }}
+                    </a>
+                </td>
+                <td>{{ playlist.owner.display_name }}</td>
+                <td>
+                    {% if playlist.items and playlist.items.total is not none %}
+                        {{ playlist.items.total }}
+                    {% elif playlist.tracks and playlist.tracks.total is not none %}
+                        {{ playlist.tracks.total }}
+                    {% else %}
+                        N/A
+                    {% endif %}
+                </td>
+                <td>
+                    {% if playlist.public %}
+                    <span class="badge badge-public">Public</span>
+                    {% else %}
+                    <span class="badge badge-private">Private</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <h3>No Playlists Found</h3>
+        <p>You don't have any playlists yet, or there was an error loading them.</p>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

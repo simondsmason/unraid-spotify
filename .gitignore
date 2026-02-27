@@ -12,6 +12,7 @@ ENV/
 # Sensitive configuration files
 spotify_config.json
 spotify_tokens.json
+spotify_credentials.txt
 
 # OS files
 .DS_Store
@@ -25,6 +26,10 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+.cursor/
+
+# Backups
+backups/
 *.swp
 *.swo
 *~

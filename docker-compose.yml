@@ -5,7 +5,7 @@ services:
     image: spotify-playlist-manager:latest
     restart: unless-stopped
     ports:
-      - "8081:8081"
+      - "8100:8081"
     network_mode: bridge
     volumes:
       - /mnt/user/appdata/spotify-playlist-manager:/app/data
@@ -17,9 +17,9 @@ services:
       # - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
       # - SPOTIFY_REDIRECT_URI=http://your-unraid-ip:8081/callback
     labels:
-      - "net.unraid.docker.icon=https://developer.spotify.com/assets/branding-guidelines/icon3@2x.png"
+      - "net.unraid.docker.icon=https://developer-assets.spotifycdn.com/images/guidelines/design/icon-framed.svg"
       - "net.unraid.docker.managed=dockerman"
-      - "net.unraid.docker.webui=http://[IP]:[PORT:8081]"
+      - "net.unraid.docker.webui=http://[IP]:[PORT:8100]"
       - "com.spotify-playlist-manager.environment=production"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/api/status')"]
@@ -27,3 +27,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 5s
+    logging:
+      driver: syslog
+      options:
+        syslog-address: "udp://192.168.2.70:513"
+        tag: "spotify-playlist-manager"

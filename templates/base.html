@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Spotify Playlist Manager{% endblock %} - v{{ version }}</title>
+    <title>{% block title %}Dashboard{% endblock %} - Spotify Playlist Manager</title>
+    <link rel="icon" type="image/svg+xml" href="https://developer-assets.spotifycdn.com/images/guidelines/design/icon-framed.svg">
     <style>
         * {
             margin: 0;
@@ -105,6 +106,29 @@
             transform: scale(1.05);
         }
         
+        .btn-login {
+            display: inline-block;
+            padding: 1rem 3rem;
+            background: #1db954;
+            color: white;
+            text-decoration: none;
+            border-radius: 50px;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: background 0.2s, transform 0.1s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .btn-login:hover {
+            background: #1ed760;
+            transform: scale(1.05);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+        }
+        
         .btn-secondary {
             background: #7f8c8d;
         }
@@ -181,23 +205,407 @@
         .playlist-link:hover {
             text-decoration: underline;
         }
+
+        /* Tool Grid - Dashboard Tiles */
+        .tool-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1rem;
+        }
+
+        .tool-tile {
+            display: block;
+            background: #f8f9fa;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 2rem 1.5rem;
+            text-align: center;
+            text-decoration: none;
+            color: #333;
+            transition: border-color 0.2s, transform 0.1s, box-shadow 0.2s;
+        }
+
+        .tool-tile:hover {
+            border-color: #1db954;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(29, 185, 84, 0.15);
+        }
+
+        .tool-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .tool-tile h3 {
+            color: #191414;
+            margin-bottom: 0.5rem;
+            font-size: 1.1rem;
+        }
+
+        .tool-tile p {
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        /* Mixer Layout */
+        .mixer-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .mixer-panel h2 {
+            margin-bottom: 1rem;
+        }
+
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: #191414;
+        }
+
+        .form-select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            font-family: inherit;
+            background: white;
+            color: #333;
+            appearance: auto;
+        }
+
+        .form-select:focus {
+            outline: none;
+            border-color: #1db954;
+            box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.2);
+        }
+
+        .rule-row {
+            padding: 0.75rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Filterable Playlist Dropdown */
+        .playlist-dropdown {
+            position: relative;
+        }
+
+        .playlist-dropdown .dropdown-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            font-family: inherit;
+            background: white;
+            color: #333;
+            cursor: pointer;
+        }
+
+        .playlist-dropdown .dropdown-input:focus {
+            outline: none;
+            border-color: #1db954;
+            box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.2);
+        }
+
+        .playlist-dropdown .dropdown-input::placeholder {
+            color: #999;
+        }
+
+        .playlist-dropdown .dropdown-list {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            max-height: 250px;
+            overflow-y: auto;
+            background: white;
+            border: 1px solid #1db954;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            z-index: 100;
+        }
+
+        .playlist-dropdown.open .dropdown-list {
+            display: block;
+        }
+
+        .playlist-dropdown.open .dropdown-input {
+            border-radius: 4px 4px 0 0;
+            border-color: #1db954;
+        }
+
+        .playlist-dropdown .dropdown-item {
+            padding: 0.5rem 0.75rem;
+            cursor: pointer;
+            font-size: 0.9rem;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .playlist-dropdown .dropdown-item:last-child {
+            border-bottom: none;
+        }
+
+        .playlist-dropdown .dropdown-item:hover {
+            background: #f0f9f4;
+        }
+
+        .playlist-dropdown .dropdown-item.highlighted {
+            background: #e8f5e9;
+        }
+
+        .playlist-dropdown .dropdown-item.disabled {
+            color: #bbb;
+            cursor: default;
+            font-style: italic;
+        }
+
+        .playlist-dropdown .dropdown-item.disabled:hover {
+            background: white;
+        }
+
+        .playlist-dropdown .dropdown-empty {
+            padding: 0.75rem;
+            color: #999;
+            font-size: 0.85rem;
+            text-align: center;
+        }
+
+        /* Mode Toggle (Presets vs Rules) */
+        .mode-toggle {
+            display: flex;
+            gap: 0;
+            margin-bottom: 1.5rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            overflow: hidden;
+            width: fit-content;
+        }
+
+        .mode-toggle label {
+            padding: 0.6rem 1.5rem;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.9rem;
+            color: #666;
+            background: #f8f9fa;
+            transition: background 0.2s, color 0.2s;
+            border-right: 1px solid #e0e0e0;
+            user-select: none;
+        }
+
+        .mode-toggle label:last-child {
+            border-right: none;
+        }
+
+        .mode-toggle input[type="radio"] {
+            display: none;
+        }
+
+        .mode-toggle input[type="radio"]:checked + label {
+            background: #1db954;
+            color: white;
+            border-color: #1db954;
+        }
+
+        .mode-section {
+            display: none;
+        }
+
+        .mode-section.active {
+            display: block;
+        }
+
+        .preset-option {
+            display: block;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            background: #f8f9fa;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .preset-option:hover {
+            border-color: #1db954;
+            background: #f0f9f4;
+        }
+
+        .preset-option input[type="radio"] {
+            display: none;
+        }
+
+        .preset-option input[type="radio"]:checked + .preset-content {
+            /* parent styling handled via JS class */
+        }
+
+        .preset-option.selected {
+            border-color: #1db954;
+            background: #f0f9f4;
+        }
+
+        .preset-content h4 {
+            margin: 0 0 0.25rem 0;
+            color: #191414;
+            font-size: 0.95rem;
+        }
+
+        .preset-content p {
+            margin: 0;
+            color: #7f8c8d;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .coming-soon {
+            color: #999;
+            font-style: italic;
+            padding: 1.5rem;
+            text-align: center;
+        }
+
+        /* Ratio Slider */
+        .ratio-slider-container {
+            margin-top: 0.75rem;
+            padding: 0.5rem 0;
+        }
+
+        .ratio-slider {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: linear-gradient(to right, #1db954 0%, #1db954 50%, #666 50%, #666 100%);
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .ratio-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #1db954;
+            border: 2px solid white;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+            cursor: pointer;
+        }
+
+        .ratio-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #1db954;
+            border: 2px solid white;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+            cursor: pointer;
+        }
+
+        .ratio-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 0.4rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #191414;
+        }
+
+        /* Responsive: stack mixer panels on narrow screens */
+        @media (max-width: 768px) {
+            .mixer-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Progress Modal */
+        .progress-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .progress-overlay.active {
+            display: flex;
+        }
+
+        .progress-modal {
+            background: white;
+            border-radius: 12px;
+            padding: 2.5rem 3rem;
+            text-align: center;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            max-width: 420px;
+            width: 90%;
+        }
+
+        .progress-modal h3 {
+            margin: 0 0 1.5rem 0;
+            color: #191414;
+            font-size: 1.2rem;
+        }
+
+        .progress-spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid #e0e0e0;
+            border-top: 4px solid #1db954;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 1.5rem auto;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .progress-step {
+            color: #555;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            min-height: 1.5em;
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
 <body>
     <div class="header">
-        <h1>🎵 Spotify Playlist Manager</h1>
+        <h1>🎵 Simon's Spotify Playlist Manager</h1>
         <div class="version">v{{ version }}</div>
     </div>
     
     <nav class="nav">
         <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Dashboard</a>
+        <a href="/playlists" class="{% if request.url.path == '/playlists' %}active{% endif %}">Playlists</a>
+        <a href="/mixer" class="{% if request.url.path == '/mixer' %}active{% endif %}">Mixer</a>
+        <a href="/settings" class="{% if request.url.path == '/settings' %}active{% endif %}">Settings</a>
         <div class="auth-status">
             {% if is_authenticated %}
                 <span>Connected to Spotify</span>
                 <a href="/logout" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem;">Logout</a>
-            {% elif is_configured is defined and is_configured %}
-                <a href="/login" class="btn">Login to Spotify</a>
             {% endif %}
         </div>
     </nav>

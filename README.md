@@ -1,12 +1,14 @@
-# Spotify Playlist Manager
+# Simon's Spotify Playlist Manager
 
 Web application for managing Spotify playlists, built with FastAPI.
 
 ## Features
 
 - ✅ Connect to Spotify via OAuth 2.0 (PKCE flow)
-- ✅ List all your playlists
-- 🚧 More features coming soon...
+- ✅ Dashboard with tool launcher tiles
+- ✅ Browse all playlists with track counts, owner, and visibility
+- ✅ Playlist Mixer UI for combining playlists with mixing rules
+- ✅ Debug logging toggle in settings
 
 ## Setup
 
@@ -97,3 +99,26 @@ pip install -r requirements.txt
 - Verify redirect URIs in Spotify dashboard match exactly
 - Check Client ID and Secret are correct
 - Make sure redirect URI includes the port number
+
+## Change History
+
+- **1.00** - 2026-01-25 - Initial release
+- **1.01** - 2026-02-13 - Added debug logging with toggle in settings page, added settings page
+- **1.011** - 2026-02-13 - Fixed pagination bug: double /v1 in URL when fetching subsequent playlist pages
+- **1.012** - 2026-02-13 - Fixed template error: tracks field renamed to items in Feb 2026 Spotify API
+- **1.02** - 2026-02-13 - Dashboard restructured as tool launcher with tiles; playlist list moved to /playlists; added Playlist Mixer UI at /mixer
+- **1.03** - 2026-02-14 - Filterable playlist dropdowns with type-to-search; added Merge and Limited Merge mixing rules
+- **1.04** - 2026-02-14 - Mixer redesigned with Presets vs Custom Rules toggle; Merge and Limited Merge are now presets; custom rules placeholder for future
+- **1.05** - 2026-02-16 - Implemented Merge and Limited Merge presets; browser tab titles now include app name suffix
+- **1.06** - 2026-02-16 - Shuffle tracks before writing to output; default playlist selections; 403 retry logic; removed fields filter from tracks request
+- **1.061** - 2026-02-16 - Fixed playlist track endpoints: /tracks renamed to /items per Feb 2026 Spotify API migration
+- **1.07** - 2026-02-16 - Mixer shows all playlists with non-owned greyed out and unselectable; ownership validated before mixing
+- **1.071** - 2026-02-16 - Fixed track extraction: Feb 2026 API renamed 'track' to 'item' inside playlist items response
+- **1.072** - 2026-02-16 - Feb 2026 API audit: removed user-read-email scope (email field removed); fixed track count field priority in playlists template
+- **1.08** - 2026-02-16 - Progress modal during mixing with live status; Docker container icon label; favicon
+- **1.081** - 2026-02-16 - Added 429 rate-limit handling with Retry-After backoff in Spotify API calls
+- **1.082** - 2026-02-16 - Fixed 504 timeout: moved playlist fetch and ownership validation into background thread
+- **1.083** - 2026-02-16 - Fixed page hangs: changed routes with blocking Spotify API calls from async to sync (FastAPI threadpool)
+- **1.084** - 2026-02-16 - Capped 429 Retry-After to 30s max; fail fast instead of sleeping for hours on heavy rate limits
+- **1.085** - 2026-02-16 - Fixed pagination: rewrite next URL to /me/playlists (Spotify returns /users/{id}/playlists which is blocked in Dev Mode)
+- **1.09** - 2026-02-26 - Added Ratio Mix preset: slider to set A/B percentage split, maximises output while maintaining ratio

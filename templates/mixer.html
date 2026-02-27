@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+
+{% block title %}Playlist Mixer{% endblock %}
+
+{% block content %}
+{% if not is_authenticated %}
+<div class="card">
+    <div class="empty-state" style="padding: 3rem 2rem;">
+        <h3>Not Connected</h3>
+        <p>Please <a href="/login" class="playlist-link">connect to Spotify</a> to use the Playlist Mixer.</p>
+    </div>
+</div>
+{% else %}
+
+<!-- Progress Modal -->
+<div class="progress-overlay" id="progressOverlay">
+    <div class="progress-modal">
+        <h3>Mixing Playlists</h3>
+        <div class="progress-spinner"></div>
+        <p class="progress-step" id="progressStep">Starting...</p>
+    </div>
+</div>
+
+{% if mix_message %}
+<div class="card" id="mixResult" style="background: #f0f9f4; border-left: 4px solid #1db954;">
+    <p style="margin: 0; font-weight: 500;">{{ mix_message }}</p>
+</div>
+{% endif %}
+
+<div class="card" id="mixResultJs" style="display: none; border-left: 4px solid #1db954;">
+    <p style="margin: 0; font-weight: 500;" id="mixResultText"></p>
+</div>
+
+<form method="POST" action="/mixer" id="mixerForm">
+    <div class="mixer-layout">
+        <!-- Left: Input Playlists -->
+        <div class="card mixer-panel">
+            <h2>Input Playlists</h2>
+            <div class="form-group">
+                <label for="playlist_a_input">Playlist A</label>
+                <input type="hidden" id="playlist_a" name="playlist_a" required>
+                <div class="playlist-dropdown" data-target="playlist_a">
+                    <input type="text" class="dropdown-input" id="playlist_a_input" placeholder="Type to search playlists..." autocomplete="off">
+                    <div class="dropdown-list"></div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="playlist_b_input">Playlist B</label>
+                <input type="hidden" id="playlist_b" name="playlist_b" required>
+                <div class="playlist-dropdown" data-target="playlist_b">
+                    <input type="text" class="dropdown-input" id="playlist_b_input" placeholder="Type to search playlists..." autocomplete="off">
+                    <div class="dropdown-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Output Playlist -->
+        <div class="card mixer-panel">
+            <h2>Output Playlist</h2>
+            <div class="form-group">
+                <label for="playlist_output_input">Write Results To</label>
+                <input type="hidden" id="playlist_output" name="playlist_output" required>
+                <div class="playlist-dropdown" data-target="playlist_output">
+                    <input type="text" class="dropdown-input" id="playlist_output_input" placeholder="Type to search playlists..." autocomplete="off">
+                    <div class="dropdown-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mixing Mode: Presets or Rules -->
+    <div class="card">
+        <h2>Mixing Method</h2>
+
+        <!-- Mode Toggle -->
+        <div class="mode-toggle">
+            <input type="radio" id="mode_presets" name="mix_mode" value="preset" checked>
+            <label for="mode_presets">Presets</label>
+            <input type="radio" id="mode_rules" name="mix_mode" value="rules">
+            <label for="mode_rules">Custom Rules</label>
+        </div>
+
+        <!-- Presets Section -->
+        <div id="presets-section" class="mode-section active">
+            <label class="preset-option selected">
+                <input type="radio" name="preset" value="merge" checked>
+                <div class="preset-content">
+                    <h4>Merge</h4>
+                    <p>Combines all tracks from both playlists into the output playlist.</p>
+                </div>
+            </label>
+            <label class="preset-option">
+                <input type="radio" name="preset" value="limited_merge">
+                <div class="preset-content">
+                    <h4>Limited Merge</h4>
+                    <p>Takes all tracks from the shorter playlist and the same number of tracks from the longer playlist. For example, if Playlist A has 500 tracks and Playlist B has 700, the output will contain all 500 from A and 500 from B.</p>
+                </div>
+            </label>
+            <label class="preset-option">
+                <input type="radio" name="preset" value="ratio">
+                <div class="preset-content">
+                    <h4>Ratio Mix</h4>
+                    <p>Set the percentage of tracks from each playlist. The mixer takes as many tracks as possible while maintaining the ratio.</p>
+                    <div class="ratio-slider-container" id="ratioSliderContainer" onclick="event.preventDefault(); event.stopPropagation();">
+                        <input type="range" id="ratioSlider" name="ratio_pct" min="0" max="100" value="50" class="ratio-slider">
+                        <div class="ratio-labels">
+                            <span id="ratioLabelA">A: 50%</span>
+                            <span id="ratioLabelB">B: 50%</span>
+                        </div>
+                    </div>
+                </div>
+            </label>
+        </div>
+
+        <!-- Custom Rules Section -->
+        <div id="rules-section" class="mode-section">
+            <p class="coming-soon">Custom rule builder coming soon. Use Presets for now.</p>
+        </div>
+    </div>
+
+    <!-- Action -->
+    <div style="text-align: center; margin-top: 1rem;">
+        <button type="submit" class="btn" style="padding: 1rem 3rem; font-size: 1rem;">
+            Mix Playlists
+        </button>
+    </div>
+</form>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    // --- Playlist data from server ---
+    var userId = "{{ user_id|default('') }}";
+    var playlists = [
+        {% for playlist in playlists|sort(attribute='name') %}
+        { id: "{{ playlist.id }}", name: "{{ playlist.name|replace('"', '\\"')|replace("'", "\\'") }}", owned: {{ 'true' if playlist.owner.id == user_id else 'false' }} }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+
+    // --- Default selections ---
+    var defaults = {
+        playlist_a: "{{ default_a|default('') }}",
+        playlist_b: "{{ default_b|default('') }}",
+        playlist_output: "{{ default_output|default('') }}"
+    };
+
+    // --- Initialize all playlist dropdowns ---
+    var dropdowns = document.querySelectorAll('.playlist-dropdown');
+    dropdowns.forEach(function(dropdown) {
+        initDropdown(dropdown, playlists);
+    });
+
+    function initDropdown(container, items) {
+        var input = container.querySelector('.dropdown-input');
+        var list = container.querySelector('.dropdown-list');
+        var targetId = container.getAttribute('data-target');
+        var hiddenInput = document.getElementById(targetId);
+        var selectedId = '';
+        var highlightIndex = -1;
+
+        function renderList(filter) {
+            var filtered = items;
+            if (filter) {
+                var lower = filter.toLowerCase();
+                filtered = items.filter(function(item) {
+                    return item.name.toLowerCase().indexOf(lower) !== -1;
+                });
+            }
+
+            list.innerHTML = '';
+            highlightIndex = -1;
+
+            if (filtered.length === 0) {
+                var empty = document.createElement('div');
+                empty.className = 'dropdown-empty';
+                empty.textContent = 'No playlists found';
+                list.appendChild(empty);
+                return;
+            }
+
+            filtered.forEach(function(item, idx) {
+                var div = document.createElement('div');
+                div.className = 'dropdown-item' + (item.owned ? '' : ' disabled');
+                div.textContent = item.name;
+                div.setAttribute('data-id', item.id);
+                div.setAttribute('data-index', idx);
+                if (item.owned) {
+                    div.addEventListener('mousedown', function(e) {
+                        e.preventDefault();
+                        selectItem(item);
+                    });
+                } else {
+                    div.addEventListener('mousedown', function(e) {
+                        e.preventDefault();
+                    });
+                }
+                list.appendChild(div);
+            });
+        }
+
+        function selectItem(item) {
+            selectedId = item.id;
+            hiddenInput.value = item.id;
+            input.value = item.name;
+            container.classList.remove('open');
+        }
+
+        function openDropdown() {
+            renderList(selectedId ? '' : input.value);
+            container.classList.add('open');
+        }
+
+        function closeDropdown() {
+            container.classList.remove('open');
+            highlightIndex = -1;
+            if (!selectedId) {
+                input.value = '';
+                hiddenInput.value = '';
+            }
+        }
+
+        input.addEventListener('focus', function() {
+            if (selectedId) {
+                input.value = '';
+                selectedId = '';
+                hiddenInput.value = '';
+            }
+            openDropdown();
+        });
+
+        input.addEventListener('input', function() {
+            selectedId = '';
+            hiddenInput.value = '';
+            renderList(input.value);
+            container.classList.add('open');
+        });
+
+        input.addEventListener('blur', function() {
+            closeDropdown();
+        });
+
+        input.addEventListener('keydown', function(e) {
+            var listItems = list.querySelectorAll('.dropdown-item');
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (highlightIndex < listItems.length - 1) {
+                    highlightIndex++;
+                    updateHighlight(listItems);
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (highlightIndex > 0) {
+                    highlightIndex--;
+                    updateHighlight(listItems);
+                }
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (highlightIndex >= 0 && highlightIndex < listItems.length) {
+                    if (!listItems[highlightIndex].classList.contains('disabled')) {
+                        var id = listItems[highlightIndex].getAttribute('data-id');
+                        var item = items.find(function(p) { return p.id === id; });
+                        if (item) selectItem(item);
+                    }
+                }
+            } else if (e.key === 'Escape') {
+                closeDropdown();
+                input.blur();
+            }
+        });
+
+        function updateHighlight(listItems) {
+            listItems.forEach(function(el) { el.classList.remove('highlighted'); });
+            if (highlightIndex >= 0 && highlightIndex < listItems.length) {
+                listItems[highlightIndex].classList.add('highlighted');
+                listItems[highlightIndex].scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        // Pre-select default if set and no value already chosen
+        var defaultName = defaults[targetId] || '';
+        if (defaultName && !hiddenInput.value) {
+            var match = items.find(function(item) { return item.name === defaultName; });
+            if (match) {
+                selectItem(match);
+            }
+        }
+    }
+
+    // --- Mode Toggle (Presets vs Rules) ---
+    var modePresets = document.getElementById('mode_presets');
+    var modeRules = document.getElementById('mode_rules');
+    var presetsSection = document.getElementById('presets-section');
+    var rulesSection = document.getElementById('rules-section');
+
+    function updateMode() {
+        if (modePresets.checked) {
+            presetsSection.classList.add('active');
+            rulesSection.classList.remove('active');
+        } else {
+            presetsSection.classList.remove('active');
+            rulesSection.classList.add('active');
+        }
+    }
+
+    if (modePresets && modeRules) {
+        modePresets.addEventListener('change', updateMode);
+        modeRules.addEventListener('change', updateMode);
+    }
+
+    // --- Preset selection highlighting ---
+    var presetOptions = document.querySelectorAll('.preset-option');
+    presetOptions.forEach(function(option) {
+        var radio = option.querySelector('input[type="radio"]');
+        radio.addEventListener('change', function() {
+            presetOptions.forEach(function(opt) { opt.classList.remove('selected'); });
+            if (radio.checked) {
+                option.classList.add('selected');
+            }
+        });
+    });
+
+    // --- Ratio Slider ---
+    var ratioSlider = document.getElementById('ratioSlider');
+    var ratioLabelA = document.getElementById('ratioLabelA');
+    var ratioLabelB = document.getElementById('ratioLabelB');
+
+    function updateRatioLabels() {
+        var val = parseInt(ratioSlider.value);
+        ratioLabelA.textContent = 'A: ' + val + '%';
+        ratioLabelB.textContent = 'B: ' + (100 - val) + '%';
+        ratioSlider.style.background = 'linear-gradient(to right, #1db954 0%, #1db954 ' + val + '%, #666 ' + val + '%, #666 100%)';
+    }
+
+    if (ratioSlider) {
+        ratioSlider.addEventListener('input', updateRatioLabels);
+        updateRatioLabels();
+    }
+
+    // --- Progress Modal: intercept form submit ---
+    var mixerForm = document.getElementById('mixerForm');
+    var progressOverlay = document.getElementById('progressOverlay');
+    var progressStep = document.getElementById('progressStep');
+    var mixResultJs = document.getElementById('mixResultJs');
+    var mixResultText = document.getElementById('mixResultText');
+
+    if (mixerForm) {
+        mixerForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            var playlistA = document.getElementById('playlist_a').value;
+            var playlistB = document.getElementById('playlist_b').value;
+            var playlistOutput = document.getElementById('playlist_output').value;
+            var presetRadio = document.querySelector('input[name="preset"]:checked');
+            var preset = presetRadio ? presetRadio.value : 'merge';
+            var mixMode = document.querySelector('input[name="mix_mode"]:checked');
+
+            if (!playlistA || !playlistB || !playlistOutput) {
+                showResult('Please select all three playlists.', true);
+                return;
+            }
+
+            if (mixMode && mixMode.value !== 'preset') {
+                showResult('Custom rules are not yet available. Please use a Preset.', true);
+                return;
+            }
+
+            // Hide any previous result
+            mixResultJs.style.display = 'none';
+            var oldResult = document.getElementById('mixResult');
+            if (oldResult) oldResult.style.display = 'none';
+
+            // Show progress modal
+            progressStep.textContent = 'Starting...';
+            progressOverlay.classList.add('active');
+
+            // Start the mixer job via API
+            var bodyData = {
+                playlist_a: playlistA,
+                playlist_b: playlistB,
+                playlist_output: playlistOutput,
+                preset: preset
+            };
+            if (preset === 'ratio' && ratioSlider) {
+                bodyData.ratio_pct = parseInt(ratioSlider.value);
+            }
+            fetch('/api/mixer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(bodyData)
+            })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    progressOverlay.classList.remove('active');
+                    showResult(data.error, true);
+                    return;
+                }
+                // Poll for status
+                var jobId = data.job_id;
+                var pollInterval = setInterval(function() {
+                    fetch('/api/mixer-status/' + jobId)
+                    .then(function(resp) { return resp.json(); })
+                    .then(function(status) {
+                        progressStep.textContent = status.step || 'Working...';
+
+                        if (status.status === 'done') {
+                            clearInterval(pollInterval);
+                            setTimeout(function() {
+                                progressOverlay.classList.remove('active');
+                                showResult(status.step, false);
+                            }, 600);
+                        } else if (status.status === 'error') {
+                            clearInterval(pollInterval);
+                            setTimeout(function() {
+                                progressOverlay.classList.remove('active');
+                                showResult(status.step, true);
+                            }, 600);
+                        }
+                    })
+                    .catch(function() {
+                        clearInterval(pollInterval);
+                        progressOverlay.classList.remove('active');
+                        showResult('Lost connection while mixing. Check server logs.', true);
+                    });
+                }, 500);
+            })
+            .catch(function(err) {
+                progressOverlay.classList.remove('active');
+                showResult('Failed to start mix: ' + err.message, true);
+            });
+        });
+    }
+
+    function showResult(message, isError) {
+        mixResultText.textContent = message;
+        mixResultJs.style.display = 'block';
+        mixResultJs.style.background = isError ? '#fdf0f0' : '#f0f9f4';
+        mixResultJs.style.borderLeftColor = isError ? '#e74c3c' : '#1db954';
+        mixResultJs.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+})();
+</script>
+{% endblock %}
