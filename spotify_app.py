@@ -25,6 +25,7 @@ Change History:
 1.085 - 2026-02-16 - Fixed pagination: rewrite next URL to /me/playlists (Spotify returns /users/{id}/playlists which is blocked in Dev Mode)
 1.09 - 2026-02-26 - Added Ratio Mix preset: slider to set A/B percentage split, maximises output while maintaining ratio
 1.091 - 2026-02-26 - Ratio slider moved to its own card above Mixing Method; slider labels show selected playlist names
+1.10 - 2026-03-01 - Token validation: startup check, hourly background check, auto-clear on revoked tokens, Reconnect button
 """
 
 import json
@@ -49,7 +50,7 @@ from fastapi.templating import Jinja2Templates
 import uvicorn
 
 # Version
-VERSION = "1.091"
+VERSION = "1.10"
 
 # Logging setup
 logger = logging.getLogger("spotify_app")
@@ -266,15 +267,25 @@ def refresh_access_token() -> bool:
         with urllib.request.urlopen(req) as response:
             result = json.loads(response.read().decode('utf-8'))
             access_token = result.get('access_token')
-            
+
             # Update tokens
             tokens['access_token'] = access_token
             if 'refresh_token' in result:
                 tokens['refresh_token'] = result['refresh_token']
             save_tokens(tokens)
-            
+
+            logger.info("Token refresh successful (v%s)", VERSION)
             return True
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8') if e.fp else ''
+        logger.error("Token refresh failed: %d %s (v%s)", e.code, error_body, VERSION)
+        if 'invalid_grant' in error_body:
+            logger.warning("Refresh token revoked, clearing stored tokens (v%s)", VERSION)
+            save_tokens({})
+            access_token = None
+        return False
     except Exception as e:
+        logger.error("Token refresh error: %s (v%s)", str(e), VERSION)
         return False
 
 
@@ -361,7 +372,9 @@ def get_spotify_api(endpoint: str, method: str = 'GET', data: Optional[Dict] = N
                         raise HTTPException(status_code=retry_e.code,
                                             detail=f"Spotify API error after retry: {retry_error_body}")
                 else:
-                    logger.error("Token refresh failed (v%s)", VERSION)
+                    logger.error("Token refresh failed, clearing tokens (v%s)", VERSION)
+                    save_tokens({})
+                    access_token = None
                     raise HTTPException(status_code=401, detail="Authentication expired. Please reconnect.")
             else:
                 raise HTTPException(status_code=e.code, detail=f"Spotify API error: {error_body}")
@@ -481,12 +494,74 @@ async def startup_event():
                 config['spotify'].get('redirect_uri', 'NOT SET'),
                 config.get('debug', False), VERSION)
 
-    # Load tokens
+    # Load and validate tokens
     tokens = load_tokens()
     global access_token
     access_token = tokens.get('access_token')
     logger.info("Startup: access_token=%s (v%s)",
                 f"{len(access_token)} chars" if access_token else "NONE", VERSION)
+
+    if access_token:
+        _validate_token_at_startup()
+
+    # Start background token health check
+    token_check_thread = threading.Thread(target=_token_health_check_loop, daemon=True)
+    token_check_thread.start()
+    logger.info("Background token health check started (v%s)", VERSION)
+
+
+def _validate_token_at_startup():
+    """Test the stored token with a lightweight API call. Clear if invalid."""
+    global access_token
+    try:
+        req = urllib.request.Request(
+            'https://api.spotify.com/v1/me',
+            headers={'Authorization': f'Bearer {access_token}'}
+        )
+        with urllib.request.urlopen(req) as response:
+            response.read()
+            logger.info("Startup token validation: OK (v%s)", VERSION)
+    except urllib.error.HTTPError as e:
+        logger.warning("Startup token validation failed: %d (v%s)", e.code, VERSION)
+        if e.code in (401, 403):
+            logger.info("Attempting token refresh at startup (v%s)", VERSION)
+            if not refresh_access_token():
+                logger.warning("Startup refresh failed, clearing tokens (v%s)", VERSION)
+                save_tokens({})
+                access_token = None
+            else:
+                logger.info("Startup refresh successful (v%s)", VERSION)
+    except Exception as e:
+        logger.error("Startup token validation error: %s (v%s)", str(e), VERSION)
+
+
+def _token_health_check_loop():
+    """Background thread: validate token every hour, clear if revoked."""
+    global access_token
+    while True:
+        time.sleep(3600)
+        if not access_token:
+            logger.debug("Token health check: no token, skipping (v%s)", VERSION)
+            continue
+        try:
+            req = urllib.request.Request(
+                'https://api.spotify.com/v1/me',
+                headers={'Authorization': f'Bearer {access_token}'}
+            )
+            with urllib.request.urlopen(req) as response:
+                response.read()
+                logger.debug("Token health check: OK (v%s)", VERSION)
+        except urllib.error.HTTPError as e:
+            logger.warning("Token health check failed: %d (v%s)", e.code, VERSION)
+            if e.code in (401, 403):
+                if not refresh_access_token():
+                    logger.warning("Token health check: refresh failed, clearing tokens (v%s)", VERSION)
+                    save_tokens({})
+                    access_token = None
+                else:
+                    logger.info("Token health check: refresh successful (v%s)", VERSION)
+        except Exception as e:
+            logger.error("Token health check error: %s (v%s)", str(e), VERSION)
 
 
 # Routes

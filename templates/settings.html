@@ -33,7 +33,7 @@
         </tr>
         <tr>
             <td style="font-weight: 500;">Spotify Connected</td>
-            <td>{{ "Yes" if is_authenticated else "No" }}</td>
+            <td>{% if is_authenticated %}Yes{% else %}No — <a href="/login" style="color: #1db954;">Reconnect</a>{% endif %}</td>
         </tr>
         <tr>
             <td style="font-weight: 500;">Client ID</td>

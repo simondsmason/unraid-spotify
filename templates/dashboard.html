@@ -6,7 +6,9 @@
 {% if not is_authenticated %}
 <div class="card">
     <div class="empty-state" style="padding: 5rem 2rem;">
-        <a href="/login" class="btn-login">LOGIN TO GET STARTED</a>
+        <h3>Not Connected</h3>
+        <p>Spotify connection expired or not set up.</p>
+        <a href="/login" class="btn" style="margin-top: 1rem;">Reconnect to Spotify</a>
     </div>
 </div>
 {% else %}
