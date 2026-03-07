@@ -13,8 +13,29 @@
 </div>
 {% else %}
 <div class="card">
-    <h2>Welcome</h2>
-    <p style="color: #7f8c8d;">Connected to Spotify. Use the menu to access tools.</p>
+    <h2>Tools</h2>
+    <div class="tool-grid">
+        <a href="/mixer" class="tool-tile">
+            <div class="tool-icon">&#127926;</div>
+            <h3>Playlist Mixer</h3>
+            <p>Combine playlists using presets like Merge, Limited Merge, or Ratio Mix.</p>
+        </a>
+        <a href="/playlists" class="tool-tile">
+            <div class="tool-icon">&#127911;</div>
+            <h3>Playlists</h3>
+            <p>View and browse all your Spotify playlists.</p>
+        </a>
+        <a href="/snapshots" class="tool-tile">
+            <div class="tool-icon">&#128247;</div>
+            <h3>Snapshots</h3>
+            <p>Save and restore point-in-time copies of your playlists.</p>
+        </a>
+        <a href="/rules" class="tool-tile">
+            <div class="tool-icon">&#9881;</div>
+            <h3>Rules</h3>
+            <p>Schedule automated tasks like mixing playlists or creating snapshots.</p>
+        </a>
+    </div>
 </div>
 {% endif %}
 {% endblock %}

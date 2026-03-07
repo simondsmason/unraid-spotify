@@ -27,8 +27,16 @@ Change History:
 1.091 - 2026-02-26 - Ratio slider moved to its own card above Mixing Method; slider labels show selected playlist names
 1.10 - 2026-03-01 - Token validation: startup check, hourly background check, auto-clear on revoked tokens, Reconnect button
 1.11 - 2026-03-07 - UI restructure: replaced top nav with fixed left sidebar; removed redundant dashboard tiles
+1.12 - 2026-03-07 - Dashboard tiles restored with Snapshots/Rules; placeholder pages for Snapshots/Rules; mixer modal stays open with OK/Save Preset buttons; mixer preset save/load/delete API
+1.13 - 2026-03-07 - Snapshots: create, list, restore, delete point-in-time playlist copies; full snapshots UI with playlist dropdown and snapshot table
+1.14 - 2026-03-07 - Rules/Scheduler: create, edit, toggle, delete scheduled rules; Run Preset and Snapshot actions; skip-if-unchanged condition; background scheduler daemon; Run Now with live status polling
+1.15 - 2026-03-07 - Backup All Playlists rule action: snapshot all owned playlists in one rule, skip unchanged playlists via per-playlist hash tracking
+1.16 - 2026-03-07 - Live progress updates during rule execution: per-playlist status for Backup All, step-by-step for Run Preset and Snapshot
+1.17 - 2026-03-07 - Snapshots redesign: playlist grid view, click-through to detail with track list, snapshot version dropdown, restore/delete per snapshot
+1.18 - 2026-03-07 - Moved snapshot storage from appdata to media volume (/mnt/user/media/Audio/spotify-backups/) via BACKUPS_DIR env var
 """
 
+import datetime
 import json
 import logging
 import os
@@ -51,7 +59,7 @@ from fastapi.templating import Jinja2Templates
 import uvicorn
 
 # Version
-VERSION = "1.11"
+VERSION = "1.18"
 
 # Logging setup
 logger = logging.getLogger("spotify_app")
@@ -510,6 +518,11 @@ async def startup_event():
     token_check_thread.start()
     logger.info("Background token health check started (v%s)", VERSION)
 
+    # Start scheduler
+    scheduler_thread = threading.Thread(target=_scheduler_loop, daemon=True)
+    scheduler_thread.start()
+    logger.info("Rule scheduler started (v%s)", VERSION)
+
 
 def _validate_token_at_startup():
     """Test the stored token with a lightweight API call. Clear if invalid."""
@@ -887,6 +900,610 @@ async def api_mixer_status(job_id: str):
     if not job:
         return JSONResponse({"error": "Job not found"}, status_code=404)
     return JSONResponse({"status": job['status'], "step": job['step']})
+
+
+# Mixer presets storage
+PRESETS_FILE = os.path.join(EXECUTION_DIR, "mixer_presets.json")
+
+
+def load_mixer_presets():
+    """Load saved mixer presets from file (v%s).""" % VERSION
+    if os.path.exists(PRESETS_FILE):
+        try:
+            with open(PRESETS_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error("Failed to load mixer presets: %s (v%s)", str(e), VERSION)
+    return []
+
+
+def save_mixer_presets(presets):
+    """Save mixer presets to file (v%s).""" % VERSION
+    with open(PRESETS_FILE, 'w') as f:
+        json.dump(presets, f, indent=2)
+    logger.info("Saved %d mixer presets (v%s)", len(presets), VERSION)
+
+
+@app.get("/api/mixer-presets")
+async def api_get_mixer_presets():
+    """List all saved mixer presets (v%s).""" % VERSION
+    return JSONResponse(load_mixer_presets())
+
+
+@app.post("/api/mixer-presets")
+async def api_save_mixer_preset(request: Request):
+    """Save a new mixer preset (v%s).""" % VERSION
+    data = await request.json()
+    name = data.get('name', '').strip()
+    if not name:
+        return JSONResponse({"error": "Preset name is required"}, status_code=400)
+
+    presets = load_mixer_presets()
+    preset = {
+        "id": str(uuid.uuid4()),
+        "name": name,
+        "playlist_a": data.get('playlist_a', ''),
+        "playlist_a_name": data.get('playlist_a_name', ''),
+        "playlist_b": data.get('playlist_b', ''),
+        "playlist_b_name": data.get('playlist_b_name', ''),
+        "playlist_output": data.get('playlist_output', ''),
+        "playlist_output_name": data.get('playlist_output_name', ''),
+        "preset": data.get('preset', 'merge'),
+        "ratio_pct": data.get('ratio_pct'),
+        "created": datetime.datetime.now().isoformat()
+    }
+    presets.append(preset)
+    save_mixer_presets(presets)
+    logger.info("Saved mixer preset '%s' (v%s)", name, VERSION)
+    return JSONResponse({"success": True, "id": preset["id"]})
+
+
+@app.delete("/api/mixer-presets/{preset_id}")
+async def api_delete_mixer_preset(preset_id: str):
+    """Delete a saved mixer preset (v%s).""" % VERSION
+    presets = load_mixer_presets()
+    presets = [p for p in presets if p.get('id') != preset_id]
+    save_mixer_presets(presets)
+    logger.info("Deleted mixer preset %s (v%s)", preset_id, VERSION)
+    return JSONResponse({"success": True})
+
+
+# Snapshot storage — use BACKUPS_DIR env var (media volume), fall back to data dir
+SNAPSHOTS_DIR = os.environ.get('BACKUPS_DIR', os.path.join(EXECUTION_DIR, "snapshots"))
+os.makedirs(SNAPSHOTS_DIR, exist_ok=True)
+
+
+def get_playlist_tracks_detail(playlist_id: str) -> list:
+    """Get all tracks from a playlist with name/artist/URI for snapshots (v%s).""" % VERSION
+    logger.debug("Fetching track details for playlist %s (v%s)", playlist_id, VERSION)
+    tracks = []
+    url = f'/playlists/{playlist_id}/items?limit=100'
+
+    while url:
+        result = get_spotify_api(url)
+        for item in result.get('items', []):
+            track = item.get('item') or item.get('track')
+            if track and track.get('uri'):
+                artists = track.get('artists', [])
+                artist_name = artists[0].get('name', 'Unknown') if artists else 'Unknown'
+                tracks.append({
+                    'uri': track['uri'],
+                    'name': track.get('name', 'Unknown'),
+                    'artist': artist_name
+                })
+        url = result.get('next')
+        if url:
+            url = url.replace('https://api.spotify.com/v1', '')
+
+    logger.info("Fetched %d track details from playlist %s (v%s)", len(tracks), playlist_id, VERSION)
+    return tracks
+
+
+def create_snapshot(playlist_id: str) -> dict:
+    """Create a snapshot of a playlist. Returns the snapshot metadata (v%s).""" % VERSION
+    # Get playlist name
+    playlist_info = get_spotify_api(f'/playlists/{playlist_id}?fields=name')
+    playlist_name = playlist_info.get('name', 'Unknown')
+
+    # Get full track details
+    tracks = get_playlist_tracks_detail(playlist_id)
+
+    timestamp = datetime.datetime.now()
+    snapshot = {
+        'playlist_id': playlist_id,
+        'playlist_name': playlist_name,
+        'created': timestamp.isoformat(),
+        'track_count': len(tracks),
+        'tracks': tracks
+    }
+
+    filename = f"{playlist_id}_{timestamp.strftime('%Y%m%d_%H%M%S')}.json"
+    filepath = os.path.join(SNAPSHOTS_DIR, filename)
+    with open(filepath, 'w') as f:
+        json.dump(snapshot, f, indent=2)
+
+    logger.info("Created snapshot '%s' for playlist '%s' (%d tracks) (v%s)",
+                filename, playlist_name, len(tracks), VERSION)
+    return {'filename': filename, 'playlist_name': playlist_name, 'track_count': len(tracks), 'created': timestamp.isoformat()}
+
+
+def list_snapshots() -> list:
+    """List all saved snapshots with metadata (v%s).""" % VERSION
+    snapshots = []
+    for filename in sorted(os.listdir(SNAPSHOTS_DIR), reverse=True):
+        if not filename.endswith('.json'):
+            continue
+        filepath = os.path.join(SNAPSHOTS_DIR, filename)
+        try:
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+            snapshots.append({
+                'filename': filename,
+                'playlist_id': data.get('playlist_id', ''),
+                'playlist_name': data.get('playlist_name', 'Unknown'),
+                'created': data.get('created', ''),
+                'track_count': data.get('track_count', 0)
+            })
+        except Exception as e:
+            logger.error("Failed to read snapshot %s: %s (v%s)", filename, str(e), VERSION)
+    return snapshots
+
+
+def restore_snapshot(filename: str) -> str:
+    """Restore a snapshot to its playlist. Returns result message (v%s).""" % VERSION
+    filepath = os.path.join(SNAPSHOTS_DIR, filename)
+    if not os.path.exists(filepath):
+        raise ValueError(f"Snapshot not found: {filename}")
+
+    with open(filepath, 'r') as f:
+        data = json.load(f)
+
+    playlist_id = data['playlist_id']
+    playlist_name = data.get('playlist_name', 'Unknown')
+    track_uris = [t['uri'] for t in data.get('tracks', [])]
+
+    if not track_uris:
+        raise ValueError("Snapshot contains no tracks")
+
+    replace_playlist_tracks(playlist_id, track_uris)
+    msg = f"Restored {len(track_uris)} tracks to '{playlist_name}'"
+    logger.info("Restored snapshot '%s': %s (v%s)", filename, msg, VERSION)
+    return msg
+
+
+@app.get("/api/snapshots")
+async def api_list_snapshots():
+    """List all snapshots (v%s).""" % VERSION
+    return JSONResponse(list_snapshots())
+
+
+@app.post("/api/snapshots")
+async def api_create_snapshot(request: Request):
+    """Create a snapshot of a playlist (v%s).""" % VERSION
+    data = await request.json()
+    playlist_id = data.get('playlist_id', '').strip()
+    if not playlist_id:
+        return JSONResponse({"error": "playlist_id is required"}, status_code=400)
+
+    try:
+        result = create_snapshot(playlist_id)
+        return JSONResponse({"success": True, **result})
+    except Exception as e:
+        logger.error("Failed to create snapshot: %s (v%s)", str(e), VERSION)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.delete("/api/snapshots/{filename}")
+async def api_delete_snapshot(filename: str):
+    """Delete a snapshot (v%s).""" % VERSION
+    filepath = os.path.join(SNAPSHOTS_DIR, filename)
+    if not os.path.exists(filepath):
+        return JSONResponse({"error": "Snapshot not found"}, status_code=404)
+    os.remove(filepath)
+    logger.info("Deleted snapshot %s (v%s)", filename, VERSION)
+    return JSONResponse({"success": True})
+
+
+@app.get("/api/snapshots/{filename}")
+async def api_get_snapshot(filename: str):
+    """Get a single snapshot with full track list (v%s).""" % VERSION
+    filepath = os.path.join(SNAPSHOTS_DIR, filename)
+    if not os.path.exists(filepath):
+        return JSONResponse({"error": "Snapshot not found"}, status_code=404)
+    try:
+        with open(filepath, 'r') as f:
+            data = json.load(f)
+        return JSONResponse(data)
+    except Exception as e:
+        logger.error("Failed to read snapshot %s: %s (v%s)", filename, str(e), VERSION)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/snapshots/{filename}/restore")
+def api_restore_snapshot(filename: str):
+    """Restore a snapshot to its playlist (v%s).""" % VERSION
+    try:
+        msg = restore_snapshot(filename)
+        return JSONResponse({"success": True, "message": msg})
+    except Exception as e:
+        logger.error("Failed to restore snapshot: %s (v%s)", str(e), VERSION)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/snapshots", response_class=HTMLResponse)
+def snapshots_page(request: Request):
+    """Snapshots page (v%s).""" % VERSION
+    tokens = load_tokens()
+    is_authenticated = bool(tokens.get('access_token'))
+
+    playlists = []
+    user_id = None
+    if is_authenticated:
+        try:
+            playlists = get_user_playlists()
+            user_id = get_current_user_id()
+        except Exception as e:
+            logger.error("Snapshots page: failed to load playlists: %s (v%s)", str(e), VERSION)
+            if "Not authenticated" in str(e) or "expired" in str(e).lower():
+                save_tokens({})
+                is_authenticated = False
+
+    return templates.TemplateResponse("snapshots.html", {
+        "request": request,
+        "version": VERSION,
+        "is_authenticated": is_authenticated,
+        "config": config,
+        "playlists": playlists,
+        "user_id": user_id or "",
+    })
+
+
+# Rules storage and scheduler
+RULES_FILE = os.path.join(EXECUTION_DIR, "rules.json")
+rule_jobs: Dict[str, Dict[str, Any]] = {}
+
+
+def load_rules() -> list:
+    """Load rules from file (v%s).""" % VERSION
+    if os.path.exists(RULES_FILE):
+        try:
+            with open(RULES_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error("Failed to load rules: %s (v%s)", str(e), VERSION)
+    return []
+
+
+def save_rules(rules: list):
+    """Save rules to file (v%s).""" % VERSION
+    with open(RULES_FILE, 'w') as f:
+        json.dump(rules, f, indent=2)
+
+
+def _get_source_hash(preset: dict) -> str:
+    """Get a hash of source playlist track URIs for skip-if-unchanged check."""
+    try:
+        tracks_a = get_playlist_tracks(preset['playlist_a'])
+        tracks_b = get_playlist_tracks(preset['playlist_b'])
+        combined = sorted(tracks_a + tracks_b)
+        return hashlib.sha256('|'.join(combined).encode()).hexdigest()
+    except Exception as e:
+        logger.error("Failed to compute source hash: %s (v%s)", str(e), VERSION)
+        return ''
+
+
+def execute_rule(rule: dict, progress_cb=None) -> str:
+    """Execute a single rule. Returns result message. progress_cb(msg) updates live status."""
+    action = rule.get('action', '')
+
+    def _progress(msg):
+        if progress_cb:
+            progress_cb(msg)
+
+    if action == 'run_preset':
+        preset_id = rule.get('config', {}).get('preset_id', '')
+        presets = load_mixer_presets()
+        preset = next((p for p in presets if p.get('id') == preset_id), None)
+        if not preset:
+            raise ValueError(f"Preset not found: {preset_id}")
+
+        # Check skip_if_unchanged
+        if rule.get('conditions', {}).get('skip_if_unchanged'):
+            _progress("Checking if source playlists changed...")
+            current_hash = _get_source_hash(preset)
+            if current_hash and current_hash == rule.get('last_source_hash', ''):
+                return 'Skipped — source playlists unchanged'
+            rule['last_source_hash'] = current_hash
+
+        # Run the mixer job synchronously
+        _progress(f"Fetching tracks from '{preset.get('playlist_a_name', 'A')}'...")
+        tracks_a = get_playlist_tracks(preset['playlist_a'])
+        _progress(f"Fetching tracks from '{preset.get('playlist_b_name', 'B')}'...")
+        tracks_b = get_playlist_tracks(preset['playlist_b'])
+
+        mix_preset = preset.get('preset', 'merge')
+        ratio_pct = preset.get('ratio_pct', 50) or 50
+
+        _progress(f"Mixing {len(tracks_a)} + {len(tracks_b)} tracks...")
+        if mix_preset == 'merge':
+            combined = tracks_a + tracks_b
+        elif mix_preset == 'limited_merge':
+            if len(tracks_a) <= len(tracks_b):
+                shorter, longer = tracks_a, tracks_b
+            else:
+                shorter, longer = tracks_b, tracks_a
+            combined = shorter + longer[:len(shorter)]
+        elif mix_preset == 'ratio':
+            pct_a = max(0, min(100, ratio_pct))
+            pct_b = 100 - pct_a
+            count_a, count_b = _calc_ratio_counts(len(tracks_a), len(tracks_b), pct_a, pct_b)
+            combined = random.sample(tracks_a, count_a) + random.sample(tracks_b, count_b)
+        else:
+            raise ValueError(f"Unknown preset type: {mix_preset}")
+
+        random.shuffle(combined)
+        _progress(f"Writing {len(combined)} tracks to '{preset.get('playlist_output_name', 'output')}'...")
+        replace_playlist_tracks(preset['playlist_output'], combined)
+        return f"Ran preset '{preset.get('name', '')}': {len(combined)} tracks written"
+
+    elif action == 'snapshot':
+        playlist_id = rule.get('config', {}).get('playlist_id', '')
+        if not playlist_id:
+            raise ValueError("No playlist configured for snapshot")
+        _progress("Creating snapshot...")
+        result = create_snapshot(playlist_id)
+        return f"Snapshot created: {result['playlist_name']} ({result['track_count']} tracks)"
+
+    elif action == 'backup_all':
+        _progress("Fetching playlists...")
+        user_id = get_current_user_id()
+        if not user_id:
+            raise ValueError("Not authenticated")
+        all_playlists = get_user_playlists()
+        owned = [p for p in all_playlists if p.get('owner', {}).get('id') == user_id]
+        if not owned:
+            return "Backup All: no owned playlists found"
+
+        # Build hash map of previous snapshot hashes for skip-if-unchanged
+        prev_hashes = rule.get('last_playlist_hashes', {})
+        created = 0
+        skipped = 0
+        failed = 0
+        total = len(owned)
+        for i, pl in enumerate(owned, 1):
+            pl_id = pl.get('id', '')
+            pl_name = pl.get('name', 'Unknown')
+            try:
+                _progress(f"Checking {i}/{total}: {pl_name}")
+                # Fetch current tracks to check for changes
+                tracks = get_playlist_tracks(pl_id)
+                current_hash = hashlib.sha256('|'.join(sorted(tracks)).encode()).hexdigest()
+
+                if rule.get('conditions', {}).get('skip_if_unchanged'):
+                    if current_hash == prev_hashes.get(pl_id, ''):
+                        skipped += 1
+                        continue
+
+                _progress(f"Snapshotting {i}/{total}: {pl_name}")
+                create_snapshot(pl_id)
+                prev_hashes[pl_id] = current_hash
+                created += 1
+                logger.info("Backup All: snapshot created for '%s' (v%s)", pl_name, VERSION)
+            except Exception as e:
+                failed += 1
+                logger.error("Backup All: failed to snapshot '%s': %s (v%s)", pl_name, str(e), VERSION)
+
+        rule['last_playlist_hashes'] = prev_hashes
+        parts = [f"{created} created"]
+        if skipped:
+            parts.append(f"{skipped} unchanged")
+        if failed:
+            parts.append(f"{failed} failed")
+        return f"Backup All: {total} playlists — {', '.join(parts)}"
+
+    else:
+        raise ValueError(f"Unknown action: {action}")
+
+
+def _run_rule_job(job_id: str, rule_id: str):
+    """Run a rule in a background thread. Updates rule_jobs and rules.json."""
+    job = rule_jobs[job_id]
+    try:
+        rules = load_rules()
+        rule = next((r for r in rules if r.get('id') == rule_id), None)
+        if not rule:
+            raise ValueError(f"Rule not found: {rule_id}")
+
+        def update_progress(msg):
+            job['step'] = msg
+
+        job['step'] = f"Starting: {rule.get('name', '')}..."
+        msg = execute_rule(rule, progress_cb=update_progress)
+
+        # Update rule status
+        rule['last_run'] = datetime.datetime.now().isoformat()
+        rule['last_result'] = msg
+        save_rules(rules)
+
+        job['status'] = 'done'
+        job['step'] = msg
+        logger.info("Rule '%s' completed: %s (v%s)", rule.get('name', ''), msg, VERSION)
+
+    except Exception as e:
+        logger.error("Rule job %s failed: %s (v%s)", job_id, str(e), VERSION)
+        job['status'] = 'error'
+        job['step'] = f'Failed: {str(e)}'
+        # Update rule last_result with error
+        try:
+            rules = load_rules()
+            rule = next((r for r in rules if r.get('id') == rule_id), None)
+            if rule:
+                rule['last_run'] = datetime.datetime.now().isoformat()
+                rule['last_result'] = f'Error: {str(e)}'
+                save_rules(rules)
+        except Exception:
+            pass
+
+
+def _scheduler_loop():
+    """Background scheduler: check rules every 60 seconds, run matching ones (v%s).""" % VERSION
+    while True:
+        time.sleep(60)
+        try:
+            rules = load_rules()
+            now = datetime.datetime.now()
+            current_time = now.strftime('%H:%M')
+            current_day = now.strftime('%a').lower()
+
+            for rule in rules:
+                if not rule.get('enabled', False):
+                    continue
+                schedule = rule.get('schedule', {})
+                rule_time = schedule.get('time', '')
+                rule_days = schedule.get('days', [])
+
+                if rule_time != current_time:
+                    continue
+                if rule_days and current_day not in rule_days:
+                    continue
+
+                # Check if already ran this minute
+                last_run = rule.get('last_run', '')
+                if last_run:
+                    try:
+                        last_dt = datetime.datetime.fromisoformat(last_run)
+                        if (now - last_dt).total_seconds() < 90:
+                            continue
+                    except Exception:
+                        pass
+
+                logger.info("Scheduler: running rule '%s' (v%s)", rule.get('name', ''), VERSION)
+                try:
+                    msg = execute_rule(rule)
+                    rule['last_run'] = now.isoformat()
+                    rule['last_result'] = msg
+                    logger.info("Scheduler: rule '%s' completed: %s (v%s)", rule.get('name', ''), msg, VERSION)
+                except Exception as e:
+                    rule['last_run'] = now.isoformat()
+                    rule['last_result'] = f'Error: {str(e)}'
+                    logger.error("Scheduler: rule '%s' failed: %s (v%s)", rule.get('name', ''), str(e), VERSION)
+
+            save_rules(rules)
+        except Exception as e:
+            logger.error("Scheduler error: %s (v%s)", str(e), VERSION)
+
+
+@app.get("/api/rules")
+async def api_list_rules():
+    """List all rules (v%s).""" % VERSION
+    return JSONResponse(load_rules())
+
+
+@app.post("/api/rules")
+async def api_create_rule(request: Request):
+    """Create a new rule (v%s).""" % VERSION
+    data = await request.json()
+    name = data.get('name', '').strip()
+    if not name:
+        return JSONResponse({"error": "Rule name is required"}, status_code=400)
+
+    rule = {
+        "id": str(uuid.uuid4()),
+        "name": name,
+        "enabled": data.get('enabled', True),
+        "action": data.get('action', ''),
+        "config": data.get('config', {}),
+        "schedule": data.get('schedule', {}),
+        "conditions": data.get('conditions', {}),
+        "last_run": None,
+        "last_result": None,
+        "last_source_hash": None,
+        "created": datetime.datetime.now().isoformat()
+    }
+    rules = load_rules()
+    rules.append(rule)
+    save_rules(rules)
+    logger.info("Created rule '%s' (v%s)", name, VERSION)
+    return JSONResponse({"success": True, "id": rule["id"]})
+
+
+@app.put("/api/rules/{rule_id}")
+async def api_update_rule(rule_id: str, request: Request):
+    """Update a rule (v%s).""" % VERSION
+    data = await request.json()
+    rules = load_rules()
+    rule = next((r for r in rules if r.get('id') == rule_id), None)
+    if not rule:
+        return JSONResponse({"error": "Rule not found"}, status_code=404)
+
+    for key in ('name', 'enabled', 'action', 'config', 'schedule', 'conditions'):
+        if key in data:
+            rule[key] = data[key]
+    save_rules(rules)
+    logger.info("Updated rule '%s' (v%s)", rule.get('name', ''), VERSION)
+    return JSONResponse({"success": True})
+
+
+@app.delete("/api/rules/{rule_id}")
+async def api_delete_rule(rule_id: str):
+    """Delete a rule (v%s).""" % VERSION
+    rules = load_rules()
+    rules = [r for r in rules if r.get('id') != rule_id]
+    save_rules(rules)
+    logger.info("Deleted rule %s (v%s)", rule_id, VERSION)
+    return JSONResponse({"success": True})
+
+
+@app.post("/api/rules/{rule_id}/run")
+async def api_run_rule(rule_id: str):
+    """Run a rule immediately (v%s).""" % VERSION
+    rules = load_rules()
+    rule = next((r for r in rules if r.get('id') == rule_id), None)
+    if not rule:
+        return JSONResponse({"error": "Rule not found"}, status_code=404)
+
+    job_id = str(uuid.uuid4())
+    rule_jobs[job_id] = {'status': 'running', 'step': 'Starting...', 'created': time.time()}
+    thread = threading.Thread(target=_run_rule_job, args=(job_id, rule_id), daemon=True)
+    thread.start()
+    return JSONResponse({"job_id": job_id})
+
+
+@app.get("/api/rules/{rule_id}/status")
+async def api_rule_status(rule_id: str):
+    """Poll run status for a rule job. Uses rule_id as job_id param name but accepts job_id too."""
+    job = rule_jobs.get(rule_id)
+    if not job:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    return JSONResponse({"status": job['status'], "step": job['step']})
+
+
+@app.get("/rules", response_class=HTMLResponse)
+def rules_page(request: Request):
+    """Rules page (v%s).""" % VERSION
+    tokens = load_tokens()
+    is_authenticated = bool(tokens.get('access_token'))
+
+    playlists = []
+    user_id = None
+    if is_authenticated:
+        try:
+            playlists = get_user_playlists()
+            user_id = get_current_user_id()
+        except Exception as e:
+            logger.error("Rules page: failed to load playlists: %s (v%s)", str(e), VERSION)
+            if "Not authenticated" in str(e) or "expired" in str(e).lower():
+                save_tokens({})
+                is_authenticated = False
+
+    return templates.TemplateResponse("rules.html", {
+        "request": request,
+        "version": VERSION,
+        "is_authenticated": is_authenticated,
+        "config": config,
+        "playlists": playlists,
+        "user_id": user_id or "",
+    })
 
 
 @app.get("/settings", response_class=HTMLResponse)

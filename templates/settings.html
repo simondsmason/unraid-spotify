@@ -33,7 +33,11 @@
         </tr>
         <tr>
             <td style="font-weight: 500;">Spotify Connected</td>
-            <td>{% if is_authenticated %}Yes{% else %}No — <a href="/login" style="color: #1db954;">Reconnect</a>{% endif %}</td>
+            <td>
+                <span id="connectionStatus">{% if is_authenticated %}Yes{% else %}No{% endif %}</span>
+                <button type="button" class="btn btn-secondary" id="checkStatusBtn" style="margin-left: 0.75rem; padding: 0.3rem 0.75rem; font-size: 0.8rem;">Check Status</button>
+                <a href="/login" class="btn" id="reconnectBtn" style="margin-left: 0.5rem; padding: 0.3rem 0.75rem; font-size: 0.8rem;{% if is_authenticated %} display: none;{% endif %}">Reconnect</a>
+            </td>
         </tr>
         <tr>
             <td style="font-weight: 500;">Client ID</td>
@@ -49,4 +53,45 @@
         </tr>
     </table>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    var checkBtn = document.getElementById('checkStatusBtn');
+    var statusSpan = document.getElementById('connectionStatus');
+    var reconnectBtn = document.getElementById('reconnectBtn');
+
+    if (checkBtn) {
+        checkBtn.addEventListener('click', function() {
+            checkBtn.disabled = true;
+            checkBtn.textContent = 'Checking...';
+            statusSpan.textContent = 'Checking...';
+            statusSpan.style.color = '';
+
+            fetch('/api/check-token')
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.valid) {
+                    statusSpan.textContent = 'Yes';
+                    statusSpan.style.color = '';
+                    reconnectBtn.style.display = 'none';
+                } else {
+                    statusSpan.textContent = 'No — ' + (data.reason || 'Disconnected');
+                    statusSpan.style.color = '#e74c3c';
+                    reconnectBtn.style.display = '';
+                }
+                checkBtn.disabled = false;
+                checkBtn.textContent = 'Check Status';
+            })
+            .catch(function() {
+                statusSpan.textContent = 'Error checking status';
+                statusSpan.style.color = '#e74c3c';
+                checkBtn.disabled = false;
+                checkBtn.textContent = 'Check Status';
+            });
+        });
+    }
+})();
+</script>
 {% endblock %}

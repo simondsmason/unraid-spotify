@@ -16,9 +16,16 @@
 <!-- Progress Modal -->
 <div class="progress-overlay" id="progressOverlay">
     <div class="progress-modal">
-        <h3>Mixing Playlists</h3>
-        <div class="progress-spinner"></div>
+        <h3 id="progressTitle">Mixing Playlists</h3>
+        <div class="progress-spinner" id="progressSpinner"></div>
         <p class="progress-step" id="progressStep">Starting...</p>
+        <div id="progressResult" style="display: none; margin-top: 1rem; padding: 1rem; background: #f0f9f4; border-radius: 6px; border-left: 4px solid #1db954; text-align: left;">
+            <p style="margin: 0; font-weight: 500;" id="progressResultText"></p>
+        </div>
+        <div id="progressButtons" style="display: none; margin-top: 1.5rem; display: none; gap: 0.75rem; justify-content: center;">
+            <button type="button" class="btn" id="progressOkBtn">OK</button>
+            <button type="button" class="btn btn-secondary" id="progressSavePresetBtn">Save Preset</button>
+        </div>
     </div>
 </div>
 
@@ -375,6 +382,85 @@
     var mixResultJs = document.getElementById('mixResultJs');
     var mixResultText = document.getElementById('mixResultText');
 
+    var progressSpinner = document.getElementById('progressSpinner');
+    var progressTitle = document.getElementById('progressTitle');
+    var progressResult = document.getElementById('progressResult');
+    var progressResultText = document.getElementById('progressResultText');
+    var progressButtons = document.getElementById('progressButtons');
+    var progressOkBtn = document.getElementById('progressOkBtn');
+    var progressSavePresetBtn = document.getElementById('progressSavePresetBtn');
+
+    // Store last mix config for Save Preset
+    var lastMixConfig = null;
+
+    function resetModal() {
+        progressTitle.textContent = 'Mixing Playlists';
+        progressSpinner.style.display = '';
+        progressStep.style.display = '';
+        progressStep.textContent = 'Starting...';
+        progressResult.style.display = 'none';
+        progressButtons.style.display = 'none';
+    }
+
+    function showModalComplete(message, isError) {
+        progressSpinner.style.display = 'none';
+        progressStep.style.display = 'none';
+        progressTitle.textContent = isError ? 'Mix Failed' : 'Mix Complete';
+        progressResultText.textContent = message;
+        progressResult.style.display = 'block';
+        progressResult.style.background = isError ? '#fdf0f0' : '#f0f9f4';
+        progressResult.style.borderLeftColor = isError ? '#e74c3c' : '#1db954';
+        progressButtons.style.display = 'flex';
+        // Hide Save Preset on error
+        progressSavePresetBtn.style.display = isError ? 'none' : '';
+    }
+
+    // OK button closes modal
+    if (progressOkBtn) {
+        progressOkBtn.addEventListener('click', function() {
+            progressOverlay.classList.remove('active');
+            resetModal();
+        });
+    }
+
+    // Save Preset button
+    if (progressSavePresetBtn) {
+        progressSavePresetBtn.addEventListener('click', function() {
+            if (!lastMixConfig) return;
+            var presetName = prompt('Enter a name for this preset:');
+            if (!presetName || !presetName.trim()) return;
+            presetName = presetName.trim();
+
+            fetch('/api/mixer-presets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: presetName,
+                    playlist_a: lastMixConfig.playlist_a,
+                    playlist_a_name: lastMixConfig.playlist_a_name,
+                    playlist_b: lastMixConfig.playlist_b,
+                    playlist_b_name: lastMixConfig.playlist_b_name,
+                    playlist_output: lastMixConfig.playlist_output,
+                    playlist_output_name: lastMixConfig.playlist_output_name,
+                    preset: lastMixConfig.preset,
+                    ratio_pct: lastMixConfig.ratio_pct
+                })
+            })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    alert('Failed to save preset: ' + data.error);
+                } else {
+                    progressOverlay.classList.remove('active');
+                    resetModal();
+                }
+            })
+            .catch(function() {
+                alert('Failed to save preset. Check server logs.');
+            });
+        });
+    }
+
     if (mixerForm) {
         mixerForm.addEventListener('submit', function(e) {
             e.preventDefault();
@@ -387,22 +473,37 @@
             var mixMode = document.querySelector('input[name="mix_mode"]:checked');
 
             if (!playlistA || !playlistB || !playlistOutput) {
-                showResult('Please select all three playlists.', true);
+                alert('Please select all three playlists.');
                 return;
             }
 
             if (mixMode && mixMode.value !== 'preset') {
-                showResult('Custom rules are not yet available. Please use a Preset.', true);
+                alert('Custom rules are not yet available. Please use a Preset.');
                 return;
             }
 
-            // Hide any previous result
+            // Hide any previous result bar
             mixResultJs.style.display = 'none';
             var oldResult = document.getElementById('mixResult');
             if (oldResult) oldResult.style.display = 'none';
 
-            // Show progress modal
-            progressStep.textContent = 'Starting...';
+            // Store config for Save Preset
+            var playlistAInput = document.getElementById('playlist_a_input');
+            var playlistBInput = document.getElementById('playlist_b_input');
+            var playlistOutputInput = document.getElementById('playlist_output_input');
+            lastMixConfig = {
+                playlist_a: playlistA,
+                playlist_a_name: playlistAInput ? playlistAInput.value : '',
+                playlist_b: playlistB,
+                playlist_b_name: playlistBInput ? playlistBInput.value : '',
+                playlist_output: playlistOutput,
+                playlist_output_name: playlistOutputInput ? playlistOutputInput.value : '',
+                preset: preset,
+                ratio_pct: (preset === 'ratio' && ratioSlider) ? parseInt(ratioSlider.value) : null
+            };
+
+            // Reset and show progress modal
+            resetModal();
             progressOverlay.classList.add('active');
 
             // Start the mixer job via API
@@ -423,8 +524,7 @@
             .then(function(resp) { return resp.json(); })
             .then(function(data) {
                 if (data.error) {
-                    progressOverlay.classList.remove('active');
-                    showResult(data.error, true);
+                    showModalComplete(data.error, true);
                     return;
                 }
                 // Poll for status
@@ -438,37 +538,25 @@
                         if (status.status === 'done') {
                             clearInterval(pollInterval);
                             setTimeout(function() {
-                                progressOverlay.classList.remove('active');
-                                showResult(status.step, false);
+                                showModalComplete(status.step, false);
                             }, 600);
                         } else if (status.status === 'error') {
                             clearInterval(pollInterval);
                             setTimeout(function() {
-                                progressOverlay.classList.remove('active');
-                                showResult(status.step, true);
+                                showModalComplete(status.step, true);
                             }, 600);
                         }
                     })
                     .catch(function() {
                         clearInterval(pollInterval);
-                        progressOverlay.classList.remove('active');
-                        showResult('Lost connection while mixing. Check server logs.', true);
+                        showModalComplete('Lost connection while mixing. Check server logs.', true);
                     });
                 }, 500);
             })
             .catch(function(err) {
-                progressOverlay.classList.remove('active');
-                showResult('Failed to start mix: ' + err.message, true);
+                showModalComplete('Failed to start mix: ' + err.message, true);
             });
         });
-    }
-
-    function showResult(message, isError) {
-        mixResultText.textContent = message;
-        mixResultJs.style.display = 'block';
-        mixResultJs.style.background = isError ? '#fdf0f0' : '#f0f9f4';
-        mixResultJs.style.borderLeftColor = isError ? '#e74c3c' : '#1db954';
-        mixResultJs.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 })();
 </script>

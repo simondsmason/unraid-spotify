@@ -125,3 +125,10 @@ pip install -r requirements.txt
 - **1.091** - 2026-02-26 - Ratio slider moved to its own card above Mixing Method; slider labels show selected playlist names
 - **1.10** - 2026-03-01 - Token validation: startup check, hourly background check, auto-clear on revoked tokens, Reconnect button
 - **1.11** - 2026-03-07 - UI restructure: replaced top nav with fixed left sidebar; removed redundant dashboard tiles
+- **1.12** - 2026-03-07 - Dashboard tiles restored with Snapshots/Rules; placeholder pages for Snapshots/Rules; mixer modal stays open with OK/Save Preset buttons; mixer preset save/load/delete API
+- **1.13** - 2026-03-07 - Snapshots: create, list, restore, delete point-in-time playlist copies; full snapshots UI with playlist dropdown and snapshot table
+- **1.14** - 2026-03-07 - Rules/Scheduler: create, edit, toggle, delete scheduled rules; Run Preset and Snapshot actions; skip-if-unchanged condition; background scheduler daemon; Run Now with live status polling
+- **1.15** - 2026-03-07 - Backup All Playlists rule action: snapshot all owned playlists in one rule, skip unchanged playlists via per-playlist hash tracking
+- **1.16** - 2026-03-07 - Live progress updates during rule execution: per-playlist status for Backup All, step-by-step for Run Preset and Snapshot
+- **1.17** - 2026-03-07 - Snapshots redesign: playlist grid view, click-through to detail with track list, snapshot version dropdown, restore/delete per snapshot
+- **1.18** - 2026-03-07 - Moved snapshot storage from appdata to media volume (/mnt/user/media/Audio/spotify-backups/) via BACKUPS_DIR env var

@@ -1,0 +1,443 @@
+{% extends "base.html" %}
+
+{% block title %}Rules{% endblock %}
+
+{% block extra_css %}
+<style>
+    .btn-danger { background: #e74c3c; }
+    .btn-danger:hover { background: #c0392b; }
+    .btn-run { background: #3498db; }
+    .btn-run:hover { background: #2980b9; }
+    .rule-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .rule-status { font-size: 0.85rem; color: #7f8c8d; }
+    .rule-status.success { color: #27ae60; }
+    .rule-status.error { color: #e74c3c; }
+    .rule-status.skipped { color: #f39c12; }
+
+    /* Toggle switch */
+    .toggle-switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #ccc; border-radius: 22px; transition: 0.3s; }
+    .toggle-slider:before { content: ""; position: absolute; height: 16px; width: 16px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.3s; }
+    .toggle-switch input:checked + .toggle-slider { background: var(--spotify-green); }
+    .toggle-switch input:checked + .toggle-slider:before { transform: translateX(18px); }
+
+    /* Rule modal */
+    .rule-modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
+    .rule-modal-overlay.active { display: flex; }
+    .rule-modal { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 8px 32px rgba(0,0,0,0.3); max-width: 550px; width: 90%; max-height: 90vh; overflow-y: auto; }
+    .rule-modal h3 { margin: 0 0 1.5rem 0; color: #191414; }
+    .rule-modal .form-group { margin-bottom: 1.25rem; }
+    .rule-modal .form-group label { display: block; font-weight: 500; margin-bottom: 0.4rem; color: #191414; font-size: 0.9rem; }
+    .rule-modal input[type="text"], .rule-modal input[type="time"], .rule-modal select {
+        width: 100%; padding: 0.6rem; border: 1px solid #e0e0e0; border-radius: 4px; font-size: 0.9rem; font-family: inherit; box-sizing: border-box;
+    }
+    .rule-modal input:focus, .rule-modal select:focus { outline: none; border-color: var(--spotify-green); box-shadow: 0 0 0 2px rgba(29,185,84,0.2); }
+    .day-checkboxes { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.25rem; }
+    .day-checkboxes label { display: flex; align-items: center; gap: 0.25rem; font-weight: 400; font-size: 0.85rem; cursor: pointer; }
+    .day-checkboxes input { width: auto; }
+    .rule-modal-buttons { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem; }
+
+    /* Info icon tooltip */
+    .action-info-icon { cursor: help; color: #7f8c8d; font-size: 1.1rem; position: relative; display: inline-block; margin-left: 0.4rem; vertical-align: middle; }
+    .action-info-popup { display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #2c3e50; color: white; padding: 0.75rem 1rem; border-radius: 6px; font-size: 0.8rem; line-height: 1.5; white-space: nowrap; z-index: 1001; box-shadow: 0 4px 12px rgba(0,0,0,0.3); margin-bottom: 0.5rem; }
+    .action-info-popup::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: #2c3e50; }
+    .action-info-icon:hover .action-info-popup { display: block; }
+
+    .condition-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0; }
+    .condition-row label { font-weight: 400; font-size: 0.85rem; cursor: pointer; }
+    .condition-row input { width: auto; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if not is_authenticated %}
+<div class="card">
+    <div class="empty-state" style="padding: 5rem 2rem;">
+        <h3>Not Connected</h3>
+        <p>Spotify connection expired or not set up.</p>
+        <a href="/login" class="btn" style="margin-top: 1rem;">Reconnect to Spotify</a>
+    </div>
+</div>
+{% else %}
+
+<!-- Add/Edit Rule Modal -->
+<div class="rule-modal-overlay" id="ruleModalOverlay">
+    <div class="rule-modal">
+        <h3 id="ruleModalTitle">Add Rule</h3>
+        <input type="hidden" id="ruleEditId">
+
+        <div class="form-group">
+            <label for="ruleName">Name</label>
+            <input type="text" id="ruleName" placeholder="e.g. Daily MegaMix">
+        </div>
+
+        <div class="form-group">
+            <label for="ruleAction">Action</label>
+            <div style="display: flex; align-items: center;">
+                <select id="ruleAction" style="flex: 1;">
+                    <option value="">Select an action...</option>
+                    <option value="run_preset">Run Preset</option>
+                    <option value="snapshot">Create Snapshot</option>
+                    <option value="backup_all">Backup All Playlists</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Run Preset config -->
+        <div class="form-group" id="presetConfigGroup" style="display: none;">
+            <label for="rulePresetId">
+                Preset
+                <span class="action-info-icon" id="presetInfoIcon">&#9432;
+                    <span class="action-info-popup" id="presetInfoPopup">Select a preset to see details</span>
+                </span>
+            </label>
+            <select id="rulePresetId">
+                <option value="">Select a preset...</option>
+            </select>
+        </div>
+
+        <!-- Snapshot config -->
+        <div class="form-group" id="snapshotConfigGroup" style="display: none;">
+            <label for="ruleSnapshotPlaylist">Playlist</label>
+            <select id="ruleSnapshotPlaylist">
+                <option value="">Select a playlist...</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="ruleTime">Time</label>
+            <input type="time" id="ruleTime" value="06:00">
+        </div>
+
+        <div class="form-group">
+            <label>Days</label>
+            <div class="day-checkboxes">
+                <label><input type="checkbox" value="mon" class="rule-day"> Mon</label>
+                <label><input type="checkbox" value="tue" class="rule-day"> Tue</label>
+                <label><input type="checkbox" value="wed" class="rule-day"> Wed</label>
+                <label><input type="checkbox" value="thu" class="rule-day"> Thu</label>
+                <label><input type="checkbox" value="fri" class="rule-day"> Fri</label>
+                <label><input type="checkbox" value="sat" class="rule-day"> Sat</label>
+                <label><input type="checkbox" value="sun" class="rule-day"> Sun</label>
+            </div>
+        </div>
+
+        <div class="form-group" id="conditionsGroup" style="display: none;">
+            <label>Conditions</label>
+            <div class="condition-row">
+                <input type="checkbox" id="ruleSkipUnchanged">
+                <label for="ruleSkipUnchanged">Skip if source playlists unchanged</label>
+            </div>
+        </div>
+
+        <div class="rule-modal-buttons">
+            <button type="button" class="btn btn-secondary" id="ruleModalCancel">Cancel</button>
+            <button type="button" class="btn" id="ruleModalSave">Save</button>
+        </div>
+    </div>
+</div>
+
+<!-- Rules List -->
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2 style="margin-bottom: 0;">Rules</h2>
+        <button type="button" class="btn" id="addRuleBtn">Add Rule</button>
+    </div>
+    <div id="rulesList">
+        <p style="color: #7f8c8d;">Loading rules...</p>
+    </div>
+</div>
+
+<div id="ruleStatus" style="display: none;" class="card">
+    <p id="ruleStatusText" style="margin: 0; font-weight: 500;"></p>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    var userId = "{{ user_id|default('') }}";
+    var playlists = [
+        {% for playlist in playlists|sort(attribute='name') %}
+        { id: "{{ playlist.id }}", name: "{{ playlist.name|replace('"', '\\"')|replace("'", "\\'") }}", owned: {{ 'true' if playlist.owner.id == user_id else 'false' }} }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+
+    var presets = [];
+    var modalOverlay = document.getElementById('ruleModalOverlay');
+    var ruleStatusDiv = document.getElementById('ruleStatus');
+    var ruleStatusText = document.getElementById('ruleStatusText');
+
+    // Load presets for the dropdown
+    function loadPresets(callback) {
+        fetch('/api/mixer-presets')
+        .then(function(r) { return r.json(); })
+        .then(function(data) { presets = data; if (callback) callback(); })
+        .catch(function() { presets = []; if (callback) callback(); });
+    }
+
+    // Populate preset dropdown
+    function populatePresetDropdown(selectedId) {
+        var sel = document.getElementById('rulePresetId');
+        sel.innerHTML = '<option value="">Select a preset...</option>';
+        presets.forEach(function(p) {
+            var opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.name;
+            if (p.id === selectedId) opt.selected = true;
+            sel.appendChild(opt);
+        });
+    }
+
+    // Populate playlist dropdown for snapshots
+    function populatePlaylistDropdown(selectedId) {
+        var sel = document.getElementById('ruleSnapshotPlaylist');
+        sel.innerHTML = '<option value="">Select a playlist...</option>';
+        playlists.forEach(function(p) {
+            if (!p.owned) return;
+            var opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = p.name;
+            if (p.id === selectedId) opt.selected = true;
+            sel.appendChild(opt);
+        });
+    }
+
+    // Update info tooltip for selected preset
+    function updatePresetInfo() {
+        var presetId = document.getElementById('rulePresetId').value;
+        var popup = document.getElementById('presetInfoPopup');
+        var preset = presets.find(function(p) { return p.id === presetId; });
+        if (!preset) {
+            popup.textContent = 'Select a preset to see details';
+            return;
+        }
+        var method = preset.preset === 'ratio' ? 'Ratio Mix (' + (preset.ratio_pct || 50) + '/' + (100 - (preset.ratio_pct || 50)) + ')' : preset.preset === 'limited_merge' ? 'Limited Merge' : 'Merge';
+        popup.innerHTML = '<strong>' + escapeHtml(preset.name) + '</strong><br>' +
+            'A: ' + escapeHtml(preset.playlist_a_name || 'Unknown') + '<br>' +
+            'B: ' + escapeHtml(preset.playlist_b_name || 'Unknown') + '<br>' +
+            'Output: ' + escapeHtml(preset.playlist_output_name || 'Unknown') + '<br>' +
+            'Method: ' + method;
+    }
+
+    // Action type change handler
+    var ruleAction = document.getElementById('ruleAction');
+    ruleAction.addEventListener('change', function() {
+        document.getElementById('presetConfigGroup').style.display = ruleAction.value === 'run_preset' ? '' : 'none';
+        document.getElementById('snapshotConfigGroup').style.display = ruleAction.value === 'snapshot' ? '' : 'none';
+        document.getElementById('conditionsGroup').style.display = (ruleAction.value === 'run_preset' || ruleAction.value === 'backup_all') ? '' : 'none';
+    });
+
+    document.getElementById('rulePresetId').addEventListener('change', updatePresetInfo);
+
+    // Open modal for adding
+    document.getElementById('addRuleBtn').addEventListener('click', function() {
+        document.getElementById('ruleModalTitle').textContent = 'Add Rule';
+        document.getElementById('ruleEditId').value = '';
+        document.getElementById('ruleName').value = '';
+        ruleAction.value = '';
+        document.getElementById('ruleTime').value = '06:00';
+        document.querySelectorAll('.rule-day').forEach(function(cb) { cb.checked = false; });
+        document.getElementById('ruleSkipUnchanged').checked = false;
+        document.getElementById('presetConfigGroup').style.display = 'none';
+        document.getElementById('snapshotConfigGroup').style.display = 'none';
+        document.getElementById('conditionsGroup').style.display = 'none';
+        loadPresets(function() {
+            populatePresetDropdown('');
+            populatePlaylistDropdown('');
+            modalOverlay.classList.add('active');
+        });
+    });
+
+    // Open modal for editing
+    window.editRule = function(ruleId) {
+        fetch('/api/rules')
+        .then(function(r) { return r.json(); })
+        .then(function(rules) {
+            var rule = rules.find(function(r) { return r.id === ruleId; });
+            if (!rule) return;
+            loadPresets(function() {
+                document.getElementById('ruleModalTitle').textContent = 'Edit Rule';
+                document.getElementById('ruleEditId').value = rule.id;
+                document.getElementById('ruleName').value = rule.name || '';
+                ruleAction.value = rule.action || '';
+                ruleAction.dispatchEvent(new Event('change'));
+
+                populatePresetDropdown(rule.config && rule.config.preset_id || '');
+                populatePlaylistDropdown(rule.config && rule.config.playlist_id || '');
+                updatePresetInfo();
+
+                document.getElementById('ruleTime').value = rule.schedule && rule.schedule.time || '06:00';
+                var days = rule.schedule && rule.schedule.days || [];
+                document.querySelectorAll('.rule-day').forEach(function(cb) {
+                    cb.checked = days.indexOf(cb.value) !== -1;
+                });
+                document.getElementById('ruleSkipUnchanged').checked = rule.conditions && rule.conditions.skip_if_unchanged || false;
+                modalOverlay.classList.add('active');
+            });
+        });
+    };
+
+    // Cancel modal
+    document.getElementById('ruleModalCancel').addEventListener('click', function() {
+        modalOverlay.classList.remove('active');
+    });
+
+    // Save rule
+    document.getElementById('ruleModalSave').addEventListener('click', function() {
+        var editId = document.getElementById('ruleEditId').value;
+        var name = document.getElementById('ruleName').value.trim();
+        var action = ruleAction.value;
+
+        if (!name) { alert('Please enter a rule name.'); return; }
+        if (!action) { alert('Please select an action.'); return; }
+
+        var config = {};
+        if (action === 'run_preset') {
+            config.preset_id = document.getElementById('rulePresetId').value;
+            if (!config.preset_id) { alert('Please select a preset.'); return; }
+        } else if (action === 'snapshot') {
+            config.playlist_id = document.getElementById('ruleSnapshotPlaylist').value;
+            if (!config.playlist_id) { alert('Please select a playlist.'); return; }
+        } else if (action === 'backup_all') {
+            // No config needed
+        }
+
+        var days = [];
+        document.querySelectorAll('.rule-day:checked').forEach(function(cb) { days.push(cb.value); });
+
+        var body = {
+            name: name,
+            enabled: true,
+            action: action,
+            config: config,
+            schedule: { time: document.getElementById('ruleTime').value, days: days },
+            conditions: { skip_if_unchanged: document.getElementById('ruleSkipUnchanged').checked }
+        };
+
+        var url = editId ? '/api/rules/' + editId : '/api/rules';
+        var method = editId ? 'PUT' : 'POST';
+
+        fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) { alert('Error: ' + data.error); return; }
+            modalOverlay.classList.remove('active');
+            loadRules();
+        })
+        .catch(function() { alert('Failed to save rule.'); });
+    });
+
+    // Toggle rule enabled
+    window.toggleRule = function(ruleId, enabled) {
+        fetch('/api/rules/' + ruleId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enabled })
+        }).then(function() { loadRules(); });
+    };
+
+    // Delete rule
+    window.deleteRule = function(ruleId) {
+        if (!confirm('Delete this rule?')) return;
+        fetch('/api/rules/' + ruleId, { method: 'DELETE' })
+        .then(function() { loadRules(); });
+    };
+
+    // Run rule now
+    window.runRuleNow = function(ruleId) {
+        showRuleStatus('Running rule...', false);
+        fetch('/api/rules/' + ruleId + '/run', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) { showRuleStatus('Error: ' + data.error, true); return; }
+            var jobId = data.job_id;
+            var poll = setInterval(function() {
+                fetch('/api/rules/' + jobId + '/status')
+                .then(function(r) { return r.json(); })
+                .then(function(status) {
+                    if (status.status === 'done') {
+                        clearInterval(poll);
+                        showRuleStatus(status.step, false);
+                        loadRules();
+                    } else if (status.status === 'error') {
+                        clearInterval(poll);
+                        showRuleStatus(status.step, true);
+                        loadRules();
+                    } else if (status.step) {
+                        showRuleStatus(status.step, false);
+                    }
+                });
+            }, 500);
+        })
+        .catch(function() { showRuleStatus('Failed to start rule.', true); });
+    };
+
+    function showRuleStatus(msg, isError) {
+        ruleStatusText.textContent = msg;
+        ruleStatusDiv.style.display = 'block';
+        ruleStatusDiv.style.background = isError ? '#fdf0f0' : '#f0f9f4';
+        ruleStatusDiv.style.borderLeft = '4px solid ' + (isError ? '#e74c3c' : '#1db954');
+    }
+
+    // Load and render rules
+    function loadRules() {
+        fetch('/api/rules')
+        .then(function(r) { return r.json(); })
+        .then(function(rules) {
+            var container = document.getElementById('rulesList');
+            if (rules.length === 0) {
+                container.innerHTML = '<p style="color: #7f8c8d;">No rules yet. Click "Add Rule" to create one.</p>';
+                return;
+            }
+            var html = '<table><thead><tr><th>Enabled</th><th>Name</th><th>Action</th><th>Schedule</th><th>Last Run</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+            rules.forEach(function(r) {
+                var actionLabel = r.action === 'run_preset' ? 'Run Preset' : r.action === 'snapshot' ? 'Snapshot' : r.action === 'backup_all' ? 'Backup All' : r.action;
+                var schedule = (r.schedule && r.schedule.time || '—');
+                if (r.schedule && r.schedule.days && r.schedule.days.length > 0 && r.schedule.days.length < 7) {
+                    schedule += ' (' + r.schedule.days.join(', ') + ')';
+                } else if (r.schedule && r.schedule.days && r.schedule.days.length === 7) {
+                    schedule += ' (daily)';
+                }
+                var lastRun = r.last_run ? new Date(r.last_run).toLocaleString() : '—';
+                var statusClass = '';
+                var statusText = r.last_result || '—';
+                if (statusText.indexOf('Error') === 0 || statusText.indexOf('Failed') === 0) statusClass = 'error';
+                else if (statusText.indexOf('Skipped') === 0) statusClass = 'skipped';
+                else if (r.last_result) statusClass = 'success';
+
+                html += '<tr>';
+                html += '<td><label class="toggle-switch"><input type="checkbox" ' + (r.enabled ? 'checked' : '') + ' onchange="toggleRule(\'' + r.id + '\', this.checked)"><span class="toggle-slider"></span></label></td>';
+                html += '<td>' + escapeHtml(r.name) + '</td>';
+                html += '<td>' + actionLabel + '</td>';
+                html += '<td>' + schedule + '</td>';
+                html += '<td style="font-size: 0.85rem; color: #7f8c8d;">' + lastRun + '</td>';
+                html += '<td><span class="rule-status ' + statusClass + '">' + escapeHtml(statusText.length > 50 ? statusText.substring(0, 50) + '...' : statusText) + '</span></td>';
+                html += '<td class="rule-actions">';
+                html += '<button class="btn btn-sm" onclick="editRule(\'' + r.id + '\')">Edit</button>';
+                html += '<button class="btn btn-run btn-sm" onclick="runRuleNow(\'' + r.id + '\')">Run Now</button>';
+                html += '<button class="btn btn-danger btn-sm" onclick="deleteRule(\'' + r.id + '\')">Delete</button>';
+                html += '</td>';
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        })
+        .catch(function() {
+            document.getElementById('rulesList').innerHTML = '<p style="color: #e74c3c;">Failed to load rules.</p>';
+        });
+    }
+
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    loadRules();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,524 @@
+{% extends "base.html" %}
+
+{% block title %}Snapshots{% endblock %}
+
+{% block extra_css %}
+<style>
+    .playlist-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1rem;
+    }
+    .playlist-card {
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 1.25rem;
+        cursor: pointer;
+        transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .playlist-card:hover {
+        border-color: #1db954;
+        box-shadow: 0 2px 8px rgba(29, 185, 84, 0.15);
+    }
+    .playlist-card h3 {
+        margin: 0 0 0.5rem 0;
+        font-size: 1rem;
+        color: #333;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .playlist-card .meta {
+        font-size: 0.85rem;
+        color: #7f8c8d;
+    }
+
+    /* Detail view */
+    .detail-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    .detail-header h2 {
+        margin: 0;
+    }
+    .snapshot-select {
+        padding: 0.5rem;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        min-width: 250px;
+    }
+    .track-table {
+        width: 100%;
+        margin-top: 1rem;
+    }
+    .track-table th {
+        text-align: left;
+        padding: 0.5rem;
+        border-bottom: 2px solid #e0e0e0;
+        font-size: 0.85rem;
+        color: #7f8c8d;
+    }
+    .track-table td {
+        padding: 0.5rem;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    .track-table tr:hover td {
+        background: #f9f9f9;
+    }
+    .track-num {
+        color: #999;
+        width: 40px;
+        text-align: right;
+    }
+    .detail-actions {
+        display: flex;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+    }
+    .btn-restore {
+        background: #3498db;
+    }
+    .btn-restore:hover {
+        background: #2980b9;
+    }
+    .btn-back {
+        background: #95a5a6;
+    }
+    .btn-back:hover {
+        background: #7f8c8d;
+    }
+    .btn-danger {
+        background: #e74c3c;
+    }
+    .btn-danger:hover {
+        background: #c0392b;
+    }
+    .snapshot-status {
+        margin-top: 0.75rem;
+        padding: 0.5rem 0.75rem;
+        border-radius: 4px;
+        display: none;
+    }
+    .snapshot-status.error {
+        background: #fdf0f0;
+        color: #e74c3c;
+    }
+    .snapshot-status.success {
+        background: #f0f9f4;
+        color: #27ae60;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if not is_authenticated %}
+<div class="card">
+    <div class="empty-state" style="padding: 5rem 2rem;">
+        <h3>Not Connected</h3>
+        <p>Spotify connection expired or not set up.</p>
+        <a href="/login" class="btn" style="margin-top: 1rem;">Reconnect to Spotify</a>
+    </div>
+</div>
+{% else %}
+
+<!-- Playlist List View -->
+<div id="listView">
+    <!-- Create Snapshot -->
+    <div class="card">
+        <h2>Create Snapshot</h2>
+        <div style="display: flex; gap: 1rem; align-items: flex-end; max-width: 600px;">
+            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                <label for="snapshotPlaylist">Playlist</label>
+                <div class="playlist-dropdown" data-target="snapshot_playlist_id">
+                    <input type="hidden" id="snapshot_playlist_id">
+                    <input type="text" class="dropdown-input" id="snapshotPlaylist" placeholder="Type to search playlists..." autocomplete="off">
+                    <div class="dropdown-list"></div>
+                </div>
+            </div>
+            <button type="button" class="btn" id="createSnapshotBtn" style="white-space: nowrap;">Create Snapshot</button>
+        </div>
+        <p id="createStatus" style="margin-top: 0.75rem; display: none;"></p>
+    </div>
+
+    <!-- Playlist Grid -->
+    <div class="card">
+        <h2>Backed Up Playlists</h2>
+        <div id="playlistGrid" class="playlist-grid">
+            <p style="color: #7f8c8d;">Loading...</p>
+        </div>
+    </div>
+</div>
+
+<!-- Snapshot Detail View (hidden initially) -->
+<div id="detailView" style="display: none;">
+    <div class="card">
+        <div class="detail-header">
+            <h2 id="detailTitle"></h2>
+            <select class="snapshot-select" id="snapshotSelect"></select>
+        </div>
+        <p id="detailMeta" style="color: #7f8c8d; margin-top: 0.25rem;"></p>
+        <div id="trackList"></div>
+        <div id="detailStatus" class="snapshot-status"></div>
+        <div class="detail-actions">
+            <button class="btn btn-back" id="backBtn">Back to Playlists</button>
+            <button class="btn btn-restore" id="restoreBtn">Restore This Snapshot</button>
+            <button class="btn btn-danger" id="deleteSnapshotBtn">Delete This Snapshot</button>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    var userId = "{{ user_id|default('') }}";
+    var playlists = [
+        {% for playlist in playlists|sort(attribute='name') %}
+        { id: "{{ playlist.id }}", name: "{{ playlist.name|replace('"', '\\"')|replace("'", "\\'") }}", owned: {{ 'true' if playlist.owner.id == user_id else 'false' }} }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+
+    var allSnapshots = [];
+    var currentPlaylistId = null;
+
+    // --- Playlist dropdown for snapshot creation ---
+    var dropdown = document.querySelector('.playlist-dropdown');
+    if (dropdown) { initDropdown(dropdown, playlists); }
+
+    function initDropdown(container, items) {
+        var input = container.querySelector('.dropdown-input');
+        var list = container.querySelector('.dropdown-list');
+        var targetId = container.getAttribute('data-target');
+        var hiddenInput = document.getElementById(targetId);
+        var selectedId = '';
+        var highlightIndex = -1;
+
+        function renderList(filter) {
+            var filtered = items;
+            if (filter) {
+                var lower = filter.toLowerCase();
+                filtered = items.filter(function(item) { return item.name.toLowerCase().indexOf(lower) !== -1; });
+            }
+            list.innerHTML = '';
+            highlightIndex = -1;
+            if (filtered.length === 0) {
+                var empty = document.createElement('div');
+                empty.className = 'dropdown-empty';
+                empty.textContent = 'No playlists found';
+                list.appendChild(empty);
+                return;
+            }
+            filtered.forEach(function(item) {
+                var div = document.createElement('div');
+                div.className = 'dropdown-item' + (item.owned ? '' : ' disabled');
+                div.textContent = item.name;
+                div.setAttribute('data-id', item.id);
+                if (item.owned) {
+                    div.addEventListener('mousedown', function(e) { e.preventDefault(); selectItem(item); });
+                } else {
+                    div.addEventListener('mousedown', function(e) { e.preventDefault(); });
+                }
+                list.appendChild(div);
+            });
+        }
+
+        function selectItem(item) {
+            selectedId = item.id;
+            hiddenInput.value = item.id;
+            input.value = item.name;
+            container.classList.remove('open');
+        }
+
+        input.addEventListener('focus', function() {
+            if (selectedId) { input.value = ''; selectedId = ''; hiddenInput.value = ''; }
+            renderList('');
+            container.classList.add('open');
+        });
+        input.addEventListener('input', function() {
+            selectedId = ''; hiddenInput.value = '';
+            renderList(input.value);
+            container.classList.add('open');
+        });
+        input.addEventListener('blur', function() {
+            container.classList.remove('open');
+            if (!selectedId) { input.value = ''; hiddenInput.value = ''; }
+        });
+        input.addEventListener('keydown', function(e) {
+            var listItems = list.querySelectorAll('.dropdown-item:not(.disabled)');
+            if (e.key === 'ArrowDown') { e.preventDefault(); if (highlightIndex < listItems.length - 1) { highlightIndex++; updateHighlight(listItems); } }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); if (highlightIndex > 0) { highlightIndex--; updateHighlight(listItems); } }
+            else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (highlightIndex >= 0 && highlightIndex < listItems.length) {
+                    var id = listItems[highlightIndex].getAttribute('data-id');
+                    var item = items.find(function(p) { return p.id === id; });
+                    if (item) selectItem(item);
+                }
+            } else if (e.key === 'Escape') { container.classList.remove('open'); input.blur(); }
+        });
+
+        function updateHighlight(listItems) {
+            listItems.forEach(function(el) { el.classList.remove('highlighted'); });
+            if (highlightIndex >= 0 && highlightIndex < listItems.length) {
+                listItems[highlightIndex].classList.add('highlighted');
+                listItems[highlightIndex].scrollIntoView({ block: 'nearest' });
+            }
+        }
+    }
+
+    // --- Create Snapshot ---
+    var createBtn = document.getElementById('createSnapshotBtn');
+    var createStatusEl = document.getElementById('createStatus');
+
+    if (createBtn) {
+        createBtn.addEventListener('click', function() {
+            var playlistId = document.getElementById('snapshot_playlist_id').value;
+            if (!playlistId) { showCreateStatus('Please select a playlist.', true); return; }
+            createBtn.disabled = true;
+            createBtn.textContent = 'Creating...';
+            showCreateStatus('Creating snapshot...', false);
+
+            fetch('/api/snapshots', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ playlist_id: playlistId })
+            })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                createBtn.disabled = false;
+                createBtn.textContent = 'Create Snapshot';
+                if (data.error) {
+                    showCreateStatus('Error: ' + data.error, true);
+                } else {
+                    showCreateStatus('Snapshot created: ' + data.playlist_name + ' (' + data.track_count + ' tracks)', false);
+                    loadSnapshots();
+                }
+            })
+            .catch(function() {
+                createBtn.disabled = false;
+                createBtn.textContent = 'Create Snapshot';
+                showCreateStatus('Failed to create snapshot.', true);
+            });
+        });
+    }
+
+    function showCreateStatus(msg, isError) {
+        createStatusEl.textContent = msg;
+        createStatusEl.style.display = 'block';
+        createStatusEl.style.color = isError ? '#e74c3c' : '#27ae60';
+    }
+
+    // --- Load snapshots and build playlist grid ---
+    function loadSnapshots() {
+        fetch('/api/snapshots')
+        .then(function(resp) { return resp.json(); })
+        .then(function(snapshots) {
+            allSnapshots = snapshots;
+            renderPlaylistGrid();
+        })
+        .catch(function() {
+            document.getElementById('playlistGrid').innerHTML = '<p style="color: #e74c3c;">Failed to load snapshots.</p>';
+        });
+    }
+
+    function renderPlaylistGrid() {
+        var container = document.getElementById('playlistGrid');
+        if (allSnapshots.length === 0) {
+            container.innerHTML = '<p style="color: #7f8c8d;">No snapshots yet. Select a playlist above to create one.</p>';
+            return;
+        }
+
+        // Group by playlist_id
+        var grouped = {};
+        allSnapshots.forEach(function(s) {
+            var pid = s.playlist_id;
+            if (!grouped[pid]) {
+                grouped[pid] = { name: s.playlist_name, id: pid, snapshots: [] };
+            }
+            grouped[pid].snapshots.push(s);
+        });
+
+        // Sort by playlist name
+        var playlistList = Object.values(grouped).sort(function(a, b) {
+            return a.name.localeCompare(b.name);
+        });
+
+        container.innerHTML = '';
+        playlistList.forEach(function(pl) {
+            var latest = pl.snapshots[0]; // already sorted newest first from API
+            var latestDate = latest.created ? new Date(latest.created).toLocaleDateString() : 'Unknown';
+            var card = document.createElement('div');
+            card.className = 'playlist-card';
+            card.innerHTML = '<h3>' + escapeHtml(pl.name) + '</h3>' +
+                '<div class="meta">' + pl.snapshots.length + ' snapshot' + (pl.snapshots.length !== 1 ? 's' : '') +
+                ' &middot; Latest: ' + latestDate + '</div>' +
+                '<div class="meta">' + latest.track_count + ' tracks</div>';
+            card.addEventListener('click', function() {
+                showDetail(pl.id);
+            });
+            container.appendChild(card);
+        });
+    }
+
+    // --- Detail View ---
+    function showDetail(playlistId) {
+        currentPlaylistId = playlistId;
+        var snaps = allSnapshots.filter(function(s) { return s.playlist_id === playlistId; });
+        if (snaps.length === 0) return;
+
+        document.getElementById('listView').style.display = 'none';
+        document.getElementById('detailView').style.display = '';
+
+        document.getElementById('detailTitle').textContent = snaps[0].playlist_name;
+        hideDetailStatus();
+
+        // Populate snapshot dropdown
+        var select = document.getElementById('snapshotSelect');
+        select.innerHTML = '';
+        snaps.forEach(function(s) {
+            var opt = document.createElement('option');
+            opt.value = s.filename;
+            var date = s.created ? new Date(s.created).toLocaleString() : 'Unknown';
+            opt.textContent = date + ' (' + s.track_count + ' tracks)';
+            select.appendChild(opt);
+        });
+
+        // Load first snapshot tracks
+        loadSnapshotTracks(snaps[0].filename);
+
+        select.onchange = function() {
+            loadSnapshotTracks(select.value);
+            hideDetailStatus();
+        };
+    }
+
+    function loadSnapshotTracks(filename) {
+        var trackListEl = document.getElementById('trackList');
+        trackListEl.innerHTML = '<p style="color: #7f8c8d;">Loading tracks...</p>';
+
+        // Update meta
+        var snap = allSnapshots.find(function(s) { return s.filename === filename; });
+        if (snap) {
+            var date = snap.created ? new Date(snap.created).toLocaleString() : 'Unknown';
+            document.getElementById('detailMeta').textContent = snap.track_count + ' tracks \u00B7 ' + date;
+        }
+
+        fetch('/api/snapshots/' + filename)
+        .then(function(resp) { return resp.json(); })
+        .then(function(data) {
+            if (data.error) {
+                trackListEl.innerHTML = '<p style="color: #e74c3c;">' + escapeHtml(data.error) + '</p>';
+                return;
+            }
+            var tracks = data.tracks || [];
+            if (tracks.length === 0) {
+                trackListEl.innerHTML = '<p style="color: #7f8c8d;">No tracks in this snapshot.</p>';
+                return;
+            }
+            var html = '<table class="track-table"><thead><tr><th class="track-num">#</th><th>Title</th><th>Artist</th></tr></thead><tbody>';
+            tracks.forEach(function(t, i) {
+                html += '<tr><td class="track-num">' + (i + 1) + '</td><td>' + escapeHtml(t.name || '') + '</td><td>' + escapeHtml(t.artist || '') + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            trackListEl.innerHTML = html;
+        })
+        .catch(function() {
+            trackListEl.innerHTML = '<p style="color: #e74c3c;">Failed to load tracks.</p>';
+        });
+    }
+
+    // --- Back Button ---
+    document.getElementById('backBtn').addEventListener('click', function() {
+        document.getElementById('detailView').style.display = 'none';
+        document.getElementById('listView').style.display = '';
+        currentPlaylistId = null;
+        hideDetailStatus();
+    });
+
+    // --- Restore Button ---
+    document.getElementById('restoreBtn').addEventListener('click', function() {
+        var filename = document.getElementById('snapshotSelect').value;
+        var snap = allSnapshots.find(function(s) { return s.filename === filename; });
+        var name = snap ? snap.playlist_name : 'this playlist';
+        if (!confirm('Restore "' + name + '" to this snapshot? This will replace all current tracks in the playlist.')) return;
+
+        showDetailStatus('Restoring...', false);
+        fetch('/api/snapshots/' + filename + '/restore', { method: 'POST' })
+        .then(function(resp) { return resp.json(); })
+        .then(function(data) {
+            if (data.error) {
+                showDetailStatus('Restore failed: ' + data.error, true);
+            } else {
+                showDetailStatus(data.message, false);
+            }
+        })
+        .catch(function() {
+            showDetailStatus('Restore failed.', true);
+        });
+    });
+
+    // --- Delete Button ---
+    document.getElementById('deleteSnapshotBtn').addEventListener('click', function() {
+        var filename = document.getElementById('snapshotSelect').value;
+        if (!confirm('Delete this snapshot? This cannot be undone.')) return;
+
+        showDetailStatus('Deleting...', false);
+        fetch('/api/snapshots/' + filename, { method: 'DELETE' })
+        .then(function(resp) { return resp.json(); })
+        .then(function(data) {
+            if (data.error) {
+                showDetailStatus('Delete failed: ' + data.error, true);
+            } else {
+                // Reload and stay in detail if more snapshots exist, else go back
+                loadSnapshots();
+                fetch('/api/snapshots')
+                .then(function(r) { return r.json(); })
+                .then(function(snaps) {
+                    allSnapshots = snaps;
+                    var remaining = snaps.filter(function(s) { return s.playlist_id === currentPlaylistId; });
+                    if (remaining.length > 0) {
+                        showDetail(currentPlaylistId);
+                        showDetailStatus('Snapshot deleted.', false);
+                    } else {
+                        document.getElementById('detailView').style.display = 'none';
+                        document.getElementById('listView').style.display = '';
+                        renderPlaylistGrid();
+                    }
+                });
+            }
+        })
+        .catch(function() {
+            showDetailStatus('Delete failed.', true);
+        });
+    });
+
+    // --- Status helpers ---
+    function showDetailStatus(msg, isError) {
+        var el = document.getElementById('detailStatus');
+        el.textContent = msg;
+        el.className = 'snapshot-status ' + (isError ? 'error' : 'success');
+        el.style.display = 'block';
+    }
+
+    function hideDetailStatus() {
+        document.getElementById('detailStatus').style.display = 'none';
+    }
+
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    // Load on page load
+    loadSnapshots();
+})();
+</script>
+{% endblock %}

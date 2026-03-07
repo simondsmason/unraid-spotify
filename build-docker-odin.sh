@@ -166,7 +166,7 @@ expect "# "
 send "docker rm -f spotify-playlist-manager 2>/dev/null; echo CONTAINER_REMOVED\r"
 expect "CONTAINER_REMOVED"
 expect "# "
-send "docker run -d --name spotify-playlist-manager --restart unless-stopped -p 8100:8081 -v /mnt/user/appdata/spotify-playlist-manager:/app/data -e DATA_DIR=/app/data -e WEB_PORT=8081 --log-driver=syslog --log-opt syslog-address=udp://192.168.2.70:513 --log-opt tag=spotify-playlist-manager --label \"net.unraid.docker.icon=https://developer-assets.spotifycdn.com/images/guidelines/design/icon-framed.svg\" --label \"net.unraid.docker.managed=dockerman\" --label \"net.unraid.docker.webui=http://\[IP\]:\[PORT:8100\]\" --label \"com.spotify-playlist-manager.environment=production\" spotify-playlist-manager:latest && echo DEPLOY_SUCCESS || echo DEPLOY_FAILED\r"
+send "docker run -d --name spotify-playlist-manager --restart unless-stopped -p 8100:8081 -v /mnt/user/appdata/spotify-playlist-manager:/app/data -v /mnt/user/media/Audio/spotify-backups:/app/backups -e DATA_DIR=/app/data -e BACKUPS_DIR=/app/backups -e WEB_PORT=8081 --log-driver=syslog --log-opt syslog-address=udp://192.168.2.70:513 --log-opt tag=spotify-playlist-manager --label \"net.unraid.docker.icon=https://developer-assets.spotifycdn.com/images/guidelines/design/icon-framed.svg\" --label \"net.unraid.docker.managed=dockerman\" --label \"net.unraid.docker.webui=http://\[IP\]:\[PORT:8100\]\" --label \"com.spotify-playlist-manager.environment=production\" spotify-playlist-manager:latest && echo DEPLOY_SUCCESS || echo DEPLOY_FAILED\r"
 expect {
     "DEPLOY_SUCCESS" { }
     "DEPLOY_FAILED" {
