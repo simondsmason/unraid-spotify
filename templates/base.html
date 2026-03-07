@@ -6,73 +6,123 @@
     <title>{% block title %}Dashboard{% endblock %} - Spotify Playlist Manager</title>
     <link rel="icon" type="image/svg+xml" href="https://developer-assets.spotifycdn.com/images/guidelines/design/icon-framed.svg">
     <style>
+        :root {
+            --sidebar-width: 220px;
+            --spotify-green: #1db954;
+            --spotify-green-hover: #1ed760;
+            --sidebar-bg: #191414;
+            --sidebar-hover: #282828;
+            --sidebar-border: #333;
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: #f5f5f5;
             color: #333;
             line-height: 1.6;
-        }
-        
-        .header {
-            background: linear-gradient(135deg, #1db954 0%, #1ed760 100%);
-            color: white;
-            padding: 1rem 2rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .header h1 {
-            font-size: 1.5rem;
-            margin-bottom: 0.25rem;
-        }
-        
-        .header .version {
-            font-size: 0.85rem;
-            opacity: 0.9;
-        }
-        
-        .nav {
-            background: #191414;
-            padding: 0.5rem 2rem;
             display: flex;
-            gap: 1rem;
-            align-items: center;
+            min-height: 100vh;
         }
-        
-        .nav a {
+
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--sidebar-bg);
+            position: fixed;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            padding: 1.25rem 1.25rem 1rem;
+            border-bottom: 1px solid var(--sidebar-border);
+        }
+
+        .sidebar-header h1 {
+            font-size: 1.05rem;
             color: white;
+            line-height: 1.3;
+        }
+
+        .sidebar-header .version {
+            font-size: 0.75rem;
+            color: #b3b3b3;
+            margin-top: 0.25rem;
+        }
+
+        .nav-links {
+            list-style: none;
+            padding: 0.5rem 0;
+            flex: 1;
+        }
+
+        .nav-links li a {
+            display: block;
+            padding: 0.6rem 1.25rem;
+            color: #b3b3b3;
             text-decoration: none;
-            padding: 0.5rem 1rem;
-            border-radius: 4px;
-            transition: background 0.2s;
+            font-size: 0.9rem;
+            transition: background 0.2s, color 0.2s;
         }
-        
-        .nav a:hover {
-            background: #1db954;
+
+        .nav-links li a:hover {
+            background: var(--sidebar-hover);
+            color: white;
         }
-        
-        .nav a.active {
-            background: #1db954;
+
+        .nav-links li a.active {
+            background: var(--spotify-green);
+            color: white;
         }
-        
-        .nav .auth-status {
-            margin-left: auto;
+
+        .sidebar-footer {
+            padding: 1rem 1.25rem;
+            border-top: 1px solid var(--sidebar-border);
+        }
+
+        .sidebar-footer .auth-status {
             display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+        }
+
+        .sidebar-footer .auth-status span {
+            color: #b3b3b3;
+        }
+
+        .sidebar-footer .auth-status .status-connected {
+            color: var(--spotify-green);
+        }
+
+        /* Main Content */
+        .content {
+            margin-left: var(--sidebar-width);
+            padding: 2rem;
+            flex: 1;
+            max-width: calc(1400px + var(--sidebar-width));
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
             align-items: center;
-            gap: 1rem;
+            margin-bottom: 1.5rem;
         }
-        
-        .container {
-            max-width: 1400px;
-            margin: 2rem auto;
-            padding: 0 2rem;
+
+        .page-header h2 {
+            font-size: 1.4rem;
+            color: #191414;
         }
-        
+
         .card {
             background: white;
             border-radius: 8px;
@@ -80,17 +130,17 @@
             margin-bottom: 1.5rem;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        
+
         .card h2 {
             margin-bottom: 1rem;
             color: #191414;
             font-size: 1.25rem;
         }
-        
+
         .btn {
             display: inline-block;
             padding: 0.75rem 1.5rem;
-            background: #1db954;
+            background: var(--spotify-green);
             color: white;
             text-decoration: none;
             border-radius: 25px;
@@ -100,16 +150,16 @@
             font-weight: 600;
             transition: background 0.2s, transform 0.1s;
         }
-        
+
         .btn:hover {
-            background: #1ed760;
+            background: var(--spotify-green-hover);
             transform: scale(1.05);
         }
-        
+
         .btn-login {
             display: inline-block;
             padding: 1rem 3rem;
-            background: #1db954;
+            background: var(--spotify-green);
             color: white;
             text-decoration: none;
             border-radius: 50px;
@@ -122,44 +172,49 @@
             transition: background 0.2s, transform 0.1s;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
-        
+
         .btn-login:hover {
-            background: #1ed760;
+            background: var(--spotify-green-hover);
             transform: scale(1.05);
             box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
         }
-        
+
         .btn-secondary {
             background: #7f8c8d;
         }
-        
+
         .btn-secondary:hover {
             background: #95a5a6;
         }
-        
+
+        .btn-sm {
+            padding: 0.4rem 0.9rem;
+            font-size: 0.8rem;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 1rem;
         }
-        
+
         table th,
         table td {
             padding: 0.75rem;
             text-align: left;
             border-bottom: 1px solid #e0e0e0;
         }
-        
+
         table th {
             background: #f8f9fa;
             font-weight: 600;
             color: #191414;
         }
-        
+
         table tr:hover {
             background: #f8f9fa;
         }
-        
+
         .badge {
             display: inline-block;
             padding: 0.25rem 0.5rem;
@@ -167,41 +222,41 @@
             font-size: 0.85rem;
             font-weight: 500;
         }
-        
+
         .badge-public {
             background: #d4edda;
             color: #155724;
         }
-        
+
         .badge-private {
             background: #f8d7da;
             color: #721c24;
         }
-        
+
         .empty-state {
             text-align: center;
             padding: 3rem;
             color: #7f8c8d;
         }
-        
+
         .empty-state h3 {
             margin-bottom: 1rem;
             color: #191414;
         }
-        
+
         .playlist-image {
             width: 60px;
             height: 60px;
             border-radius: 4px;
             object-fit: cover;
         }
-        
+
         .playlist-link {
-            color: #1db954;
+            color: var(--spotify-green);
             text-decoration: none;
             font-weight: 500;
         }
-        
+
         .playlist-link:hover {
             text-decoration: underline;
         }
@@ -227,7 +282,7 @@
         }
 
         .tool-tile:hover {
-            border-color: #1db954;
+            border-color: var(--spotify-green);
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(29, 185, 84, 0.15);
         }
@@ -286,7 +341,7 @@
 
         .form-select:focus {
             outline: none;
-            border-color: #1db954;
+            border-color: var(--spotify-green);
             box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.2);
         }
 
@@ -316,7 +371,7 @@
 
         .playlist-dropdown .dropdown-input:focus {
             outline: none;
-            border-color: #1db954;
+            border-color: var(--spotify-green);
             box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.2);
         }
 
@@ -333,7 +388,7 @@
             max-height: 250px;
             overflow-y: auto;
             background: white;
-            border: 1px solid #1db954;
+            border: 1px solid var(--spotify-green);
             border-top: none;
             border-radius: 0 0 4px 4px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -346,7 +401,7 @@
 
         .playlist-dropdown.open .dropdown-input {
             border-radius: 4px 4px 0 0;
-            border-color: #1db954;
+            border-color: var(--spotify-green);
         }
 
         .playlist-dropdown .dropdown-item {
@@ -417,9 +472,9 @@
         }
 
         .mode-toggle input[type="radio"]:checked + label {
-            background: #1db954;
+            background: var(--spotify-green);
             color: white;
-            border-color: #1db954;
+            border-color: var(--spotify-green);
         }
 
         .mode-section {
@@ -442,7 +497,7 @@
         }
 
         .preset-option:hover {
-            border-color: #1db954;
+            border-color: var(--spotify-green);
             background: #f0f9f4;
         }
 
@@ -450,12 +505,8 @@
             display: none;
         }
 
-        .preset-option input[type="radio"]:checked + .preset-content {
-            /* parent styling handled via JS class */
-        }
-
         .preset-option.selected {
-            border-color: #1db954;
+            border-color: var(--spotify-green);
             background: #f0f9f4;
         }
 
@@ -502,7 +553,7 @@
             width: 20px;
             height: 20px;
             border-radius: 50%;
-            background: #1db954;
+            background: var(--spotify-green);
             border: 2px solid white;
             box-shadow: 0 1px 4px rgba(0,0,0,0.3);
             cursor: pointer;
@@ -512,7 +563,7 @@
             width: 20px;
             height: 20px;
             border-radius: 50%;
-            background: #1db954;
+            background: var(--spotify-green);
             border: 2px solid white;
             box-shadow: 0 1px 4px rgba(0,0,0,0.3);
             cursor: pointer;
@@ -572,7 +623,7 @@
             width: 48px;
             height: 48px;
             border: 4px solid #e0e0e0;
-            border-top: 4px solid #1db954;
+            border-top: 4px solid var(--spotify-green);
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
             margin: 0 auto 1.5rem auto;
@@ -592,30 +643,36 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
-    <div class="header">
-        <h1>🎵 Simon's Spotify Playlist Manager</h1>
-        <div class="version">v{{ version }}</div>
-    </div>
-    
-    <nav class="nav">
-        <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Dashboard</a>
-        <a href="/playlists" class="{% if request.url.path == '/playlists' %}active{% endif %}">Playlists</a>
-        <a href="/mixer" class="{% if request.url.path == '/mixer' %}active{% endif %}">Mixer</a>
-        <a href="/settings" class="{% if request.url.path == '/settings' %}active{% endif %}">Settings</a>
-        <div class="auth-status">
-            {% if is_authenticated %}
-                <span>Connected to Spotify</span>
-                <a href="/logout" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.85rem;">Logout</a>
-            {% else %}
-                <a href="/login" class="btn" style="padding: 0.5rem 1rem; font-size: 0.85rem;">Reconnect</a>
-            {% endif %}
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <h1>Spotify Playlist Manager</h1>
+            <div class="version">v{{ version }}</div>
+        </div>
+        <ul class="nav-links">
+            <li><a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Dashboard</a></li>
+            <li><a href="/mixer" class="{% if request.url.path == '/mixer' %}active{% endif %}">Mixer</a></li>
+            <li><a href="/playlists" class="{% if request.url.path == '/playlists' %}active{% endif %}">Playlists</a></li>
+            <li><a href="/snapshots" class="{% if request.url.path == '/snapshots' %}active{% endif %}">Snapshots</a></li>
+            <li><a href="/rules" class="{% if request.url.path == '/rules' %}active{% endif %}">Rules</a></li>
+            <li><a href="/settings" class="{% if request.url.path == '/settings' %}active{% endif %}">Settings</a></li>
+        </ul>
+        <div class="sidebar-footer">
+            <div class="auth-status">
+                {% if is_authenticated %}
+                    <span class="status-connected">Connected to Spotify</span>
+                    <a href="/logout" class="btn btn-secondary btn-sm">Logout</a>
+                {% else %}
+                    <span>Not Connected</span>
+                    <a href="/login" class="btn btn-sm">Reconnect</a>
+                {% endif %}
+            </div>
         </div>
     </nav>
-    
-    <div class="container">
+
+    <main class="content">
         {% block content %}{% endblock %}
-    </div>
-    
+    </main>
+
     {% block extra_js %}{% endblock %}
 </body>
 </html>

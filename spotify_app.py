@@ -26,6 +26,7 @@ Change History:
 1.09 - 2026-02-26 - Added Ratio Mix preset: slider to set A/B percentage split, maximises output while maintaining ratio
 1.091 - 2026-02-26 - Ratio slider moved to its own card above Mixing Method; slider labels show selected playlist names
 1.10 - 2026-03-01 - Token validation: startup check, hourly background check, auto-clear on revoked tokens, Reconnect button
+1.11 - 2026-03-07 - UI restructure: replaced top nav with fixed left sidebar; removed redundant dashboard tiles
 """
 
 import json
@@ -50,7 +51,7 @@ from fastapi.templating import Jinja2Templates
 import uvicorn
 
 # Version
-VERSION = "1.10"
+VERSION = "1.11"
 
 # Logging setup
 logger = logging.getLogger("spotify_app")
@@ -1037,6 +1038,41 @@ async def api_status():
         "authenticated": bool(tokens.get('access_token')),
         "version": VERSION
     }
+
+
+@app.get("/api/check-token")
+def api_check_token():
+    """Actively validate the stored token against Spotify API."""
+    global access_token
+    tokens = load_tokens()
+    if not tokens.get('access_token'):
+        return {"valid": False, "reason": "No token stored"}
+
+    access_token = tokens.get('access_token')
+    try:
+        req = urllib.request.Request(
+            'https://api.spotify.com/v1/me',
+            headers={'Authorization': f'Bearer {access_token}'}
+        )
+        with urllib.request.urlopen(req) as response:
+            response.read()
+            logger.info("Token check: valid (v%s)", VERSION)
+            return {"valid": True}
+    except urllib.error.HTTPError as e:
+        logger.warning("Token check failed: %d (v%s)", e.code, VERSION)
+        if e.code in (401, 403):
+            if not refresh_access_token():
+                logger.warning("Token check: refresh failed, clearing tokens (v%s)", VERSION)
+                save_tokens({})
+                access_token = None
+                return {"valid": False, "reason": "Token expired or revoked"}
+            else:
+                logger.info("Token check: refreshed successfully (v%s)", VERSION)
+                return {"valid": True}
+        return {"valid": False, "reason": f"Spotify API error: {e.code}"}
+    except Exception as e:
+        logger.error("Token check error: %s (v%s)", str(e), VERSION)
+        return {"valid": False, "reason": str(e)}
 
 
 def main():
