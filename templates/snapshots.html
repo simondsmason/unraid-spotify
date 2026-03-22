@@ -4,47 +4,21 @@
 
 {% block extra_css %}
 <style>
-    .playlist-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 1rem;
-    }
-    .playlist-card {
-        background: #fff;
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        padding: 1.25rem;
-        cursor: pointer;
-        transition: border-color 0.15s, box-shadow 0.15s;
-    }
-    .playlist-card:hover {
-        border-color: #1db954;
-        box-shadow: 0 2px 8px rgba(29, 185, 84, 0.15);
-    }
-    .playlist-card h3 {
-        margin: 0 0 0.5rem 0;
-        font-size: 1rem;
-        color: #333;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .playlist-card .meta {
-        font-size: 0.85rem;
-        color: #7f8c8d;
-    }
+    .clickable-row { cursor: pointer; }
+    .clickable-row:hover { background: #f0f9f4 !important; }
 
-    /* Detail view */
-    .detail-header {
+    .detail-actions {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 1rem;
+        gap: 0.75rem;
+        margin-top: 1rem;
     }
-    .detail-header h2 {
-        margin: 0;
-    }
+    .btn-restore { background: #3498db; }
+    .btn-restore:hover { background: #2980b9; }
+    .btn-back { background: #95a5a6; }
+    .btn-back:hover { background: #7f8c8d; }
+    .btn-danger { background: #e74c3c; }
+    .btn-danger:hover { background: #c0392b; }
+
     .snapshot-select {
         padding: 0.5rem;
         border: 1px solid #ccc;
@@ -52,65 +26,33 @@
         font-size: 0.9rem;
         min-width: 250px;
     }
-    .track-table {
-        width: 100%;
-        margin-top: 1rem;
-    }
-    .track-table th {
-        text-align: left;
-        padding: 0.5rem;
-        border-bottom: 2px solid #e0e0e0;
-        font-size: 0.85rem;
-        color: #7f8c8d;
-    }
-    .track-table td {
-        padding: 0.5rem;
-        border-bottom: 1px solid #f0f0f0;
-    }
-    .track-table tr:hover td {
-        background: #f9f9f9;
-    }
-    .track-num {
-        color: #999;
-        width: 40px;
-        text-align: right;
-    }
-    .detail-actions {
-        display: flex;
-        gap: 0.75rem;
-        margin-top: 1.5rem;
-    }
-    .btn-restore {
-        background: #3498db;
-    }
-    .btn-restore:hover {
-        background: #2980b9;
-    }
-    .btn-back {
-        background: #95a5a6;
-    }
-    .btn-back:hover {
-        background: #7f8c8d;
-    }
-    .btn-danger {
-        background: #e74c3c;
-    }
-    .btn-danger:hover {
-        background: #c0392b;
-    }
+
     .snapshot-status {
         margin-top: 0.75rem;
         padding: 0.5rem 0.75rem;
         border-radius: 4px;
         display: none;
     }
-    .snapshot-status.error {
-        background: #fdf0f0;
-        color: #e74c3c;
+    .snapshot-status.error { background: #fdf0f0; color: #e74c3c; }
+    .snapshot-status.success { background: #f0f9f4; color: #27ae60; }
+
+    .detail-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 1rem;
     }
-    .snapshot-status.success {
-        background: #f0f9f4;
-        color: #27ae60;
+    .detail-header h2 { margin: 0; }
+
+    .track-num {
+        color: #999;
+        width: 40px;
+        text-align: right;
+    }
+
+    .scroll-card-header-bordered {
+        border-bottom: 2px solid #e0e0e0;
     }
 </style>
 {% endblock %}
@@ -126,7 +68,7 @@
 </div>
 {% else %}
 
-<!-- Playlist List View -->
+<!-- List View -->
 <div id="listView">
     <!-- Create Snapshot -->
     <div class="card">
@@ -145,29 +87,46 @@
         <p id="createStatus" style="margin-top: 0.75rem; display: none;"></p>
     </div>
 
-    <!-- Playlist Grid -->
-    <div class="card">
-        <h2>Backed Up Playlists</h2>
-        <div id="playlistGrid" class="playlist-grid">
-            <p style="color: #7f8c8d;">Loading...</p>
+    <!-- Backed Up Playlists -->
+    <div class="card scroll-card" style="max-height: calc(100vh - 14rem);">
+        <div class="scroll-card-header">
+            <h2 id="listTitle">Backed Up Playlists</h2>
+        </div>
+        <div class="scroll-card-body">
+            <table id="snapshotTable">
+                <thead>
+                    <tr>
+                        <th class="sortable" data-type="string">Playlist</th>
+                        <th class="sortable" data-type="number">Snapshots</th>
+                        <th class="sortable" data-type="date">Latest Backup</th>
+                        <th class="sortable" data-type="number">Tracks</th>
+                    </tr>
+                </thead>
+                <tbody id="snapshotTableBody">
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
 
-<!-- Snapshot Detail View (hidden initially) -->
+<!-- Detail View (hidden initially) -->
 <div id="detailView" style="display: none;">
-    <div class="card">
-        <div class="detail-header">
-            <h2 id="detailTitle"></h2>
-            <select class="snapshot-select" id="snapshotSelect"></select>
+    <div class="card scroll-card">
+        <div class="scroll-card-header scroll-card-header-bordered">
+            <div class="detail-header">
+                <h2 id="detailTitle"></h2>
+                <select class="snapshot-select" id="snapshotSelect"></select>
+            </div>
+            <p id="detailMeta" style="color: #7f8c8d; margin-top: 0.25rem;"></p>
+            <div class="detail-actions">
+                <button class="btn btn-back" id="backBtn">Back to Playlists</button>
+                <button class="btn btn-restore" id="restoreBtn">Restore This Snapshot</button>
+                <button class="btn btn-danger" id="deleteSnapshotBtn">Delete This Snapshot</button>
+            </div>
+            <div id="detailStatus" class="snapshot-status"></div>
         </div>
-        <p id="detailMeta" style="color: #7f8c8d; margin-top: 0.25rem;"></p>
-        <div id="trackList"></div>
-        <div id="detailStatus" class="snapshot-status"></div>
-        <div class="detail-actions">
-            <button class="btn btn-back" id="backBtn">Back to Playlists</button>
-            <button class="btn btn-restore" id="restoreBtn">Restore This Snapshot</button>
-            <button class="btn btn-danger" id="deleteSnapshotBtn">Delete This Snapshot</button>
+        <div class="scroll-card-body" id="trackListBody">
+            <p style="color: #7f8c8d; padding: 1rem;">Loading tracks...</p>
         </div>
     </div>
 </div>
@@ -315,23 +274,25 @@
         createStatusEl.style.color = isError ? '#e74c3c' : '#27ae60';
     }
 
-    // --- Load snapshots and build playlist grid ---
+    // --- Load snapshots and build table ---
     function loadSnapshots() {
         fetch('/api/snapshots')
         .then(function(resp) { return resp.json(); })
         .then(function(snapshots) {
             allSnapshots = snapshots;
-            renderPlaylistGrid();
+            renderSnapshotTable();
         })
         .catch(function() {
-            document.getElementById('playlistGrid').innerHTML = '<p style="color: #e74c3c;">Failed to load snapshots.</p>';
+            document.getElementById('snapshotTableBody').innerHTML = '<tr><td colspan="4" style="color: #e74c3c;">Failed to load snapshots.</td></tr>';
         });
     }
 
-    function renderPlaylistGrid() {
-        var container = document.getElementById('playlistGrid');
+    function renderSnapshotTable() {
+        var tbody = document.getElementById('snapshotTableBody');
+        var table = document.getElementById('snapshotTable');
         if (allSnapshots.length === 0) {
-            container.innerHTML = '<p style="color: #7f8c8d;">No snapshots yet. Select a playlist above to create one.</p>';
+            tbody.innerHTML = '<tr><td colspan="4" style="color: #7f8c8d;">No snapshots yet. Select a playlist above to create one.</td></tr>';
+            document.getElementById('listTitle').textContent = 'Backed Up Playlists';
             return;
         }
 
@@ -345,26 +306,33 @@
             grouped[pid].snapshots.push(s);
         });
 
-        // Sort by playlist name
         var playlistList = Object.values(grouped).sort(function(a, b) {
             return a.name.localeCompare(b.name);
         });
 
-        container.innerHTML = '';
+        document.getElementById('listTitle').textContent = 'Backed Up Playlists (' + playlistList.length + ')';
+
+        tbody.innerHTML = '';
         playlistList.forEach(function(pl) {
-            var latest = pl.snapshots[0]; // already sorted newest first from API
-            var latestDate = latest.created ? new Date(latest.created).toLocaleDateString() : 'Unknown';
-            var card = document.createElement('div');
-            card.className = 'playlist-card';
-            card.innerHTML = '<h3>' + escapeHtml(pl.name) + '</h3>' +
-                '<div class="meta">' + pl.snapshots.length + ' snapshot' + (pl.snapshots.length !== 1 ? 's' : '') +
-                ' &middot; Latest: ' + latestDate + '</div>' +
-                '<div class="meta">' + latest.track_count + ' tracks</div>';
-            card.addEventListener('click', function() {
-                showDetail(pl.id);
-            });
-            container.appendChild(card);
+            var latest = pl.snapshots[0];
+            var latestDate = latest.created ? new Date(latest.created) : null;
+            var latestDateStr = latestDate ? latestDate.toLocaleDateString() + ' ' + latestDate.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : 'Unknown';
+            var latestISO = latest.created || '';
+
+            var tr = document.createElement('tr');
+            tr.className = 'clickable-row';
+            tr.innerHTML =
+                '<td>' + escapeHtml(pl.name) + '</td>' +
+                '<td data-value="' + pl.snapshots.length + '">' + pl.snapshots.length + '</td>' +
+                '<td data-value="' + latestISO + '">' + latestDateStr + '</td>' +
+                '<td data-value="' + latest.track_count + '">' + latest.track_count + '</td>';
+            tr.addEventListener('click', function() { showDetail(pl.id); });
+            tbody.appendChild(tr);
         });
+
+        // Reset sort init so sorting re-binds to new rows
+        if (table) { delete table.dataset.sortInit; }
+        initTableSort('snapshotTable');
     }
 
     // --- Detail View ---
@@ -400,8 +368,8 @@
     }
 
     function loadSnapshotTracks(filename) {
-        var trackListEl = document.getElementById('trackList');
-        trackListEl.innerHTML = '<p style="color: #7f8c8d;">Loading tracks...</p>';
+        var trackBody = document.getElementById('trackListBody');
+        trackBody.innerHTML = '<p style="color: #7f8c8d; padding: 1rem;">Loading tracks...</p>';
 
         // Update meta
         var snap = allSnapshots.find(function(s) { return s.filename === filename; });
@@ -414,23 +382,30 @@
         .then(function(resp) { return resp.json(); })
         .then(function(data) {
             if (data.error) {
-                trackListEl.innerHTML = '<p style="color: #e74c3c;">' + escapeHtml(data.error) + '</p>';
+                trackBody.innerHTML = '<p style="color: #e74c3c; padding: 1rem;">' + escapeHtml(data.error) + '</p>';
                 return;
             }
             var tracks = data.tracks || [];
             if (tracks.length === 0) {
-                trackListEl.innerHTML = '<p style="color: #7f8c8d;">No tracks in this snapshot.</p>';
+                trackBody.innerHTML = '<p style="color: #7f8c8d; padding: 1rem;">No tracks in this snapshot.</p>';
                 return;
             }
-            var html = '<table class="track-table"><thead><tr><th class="track-num">#</th><th>Title</th><th>Artist</th></tr></thead><tbody>';
+            var html = '<table id="trackTable"><thead><tr>' +
+                '<th class="sortable track-num" data-type="number">#</th>' +
+                '<th class="sortable" data-type="string">Title</th>' +
+                '<th class="sortable" data-type="string">Artist</th>' +
+                '</tr></thead><tbody>';
             tracks.forEach(function(t, i) {
-                html += '<tr><td class="track-num">' + (i + 1) + '</td><td>' + escapeHtml(t.name || '') + '</td><td>' + escapeHtml(t.artist || '') + '</td></tr>';
+                html += '<tr><td class="track-num" data-value="' + (i + 1) + '">' + (i + 1) + '</td>' +
+                    '<td>' + escapeHtml(t.name || '') + '</td>' +
+                    '<td>' + escapeHtml(t.artist || '') + '</td></tr>';
             });
             html += '</tbody></table>';
-            trackListEl.innerHTML = html;
+            trackBody.innerHTML = html;
+            initTableSort('trackTable');
         })
         .catch(function() {
-            trackListEl.innerHTML = '<p style="color: #e74c3c;">Failed to load tracks.</p>';
+            trackBody.innerHTML = '<p style="color: #e74c3c; padding: 1rem;">Failed to load tracks.</p>';
         });
     }
 
@@ -476,8 +451,6 @@
             if (data.error) {
                 showDetailStatus('Delete failed: ' + data.error, true);
             } else {
-                // Reload and stay in detail if more snapshots exist, else go back
-                loadSnapshots();
                 fetch('/api/snapshots')
                 .then(function(r) { return r.json(); })
                 .then(function(snaps) {
@@ -489,7 +462,7 @@
                     } else {
                         document.getElementById('detailView').style.display = 'none';
                         document.getElementById('listView').style.display = '';
-                        renderPlaylistGrid();
+                        renderSnapshotTable();
                     }
                 });
             }

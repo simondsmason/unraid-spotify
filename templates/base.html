@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Dashboard{% endblock %} - Spotify Playlist Manager</title>
-    <link rel="icon" type="image/svg+xml" href="https://developer-assets.spotifycdn.com/images/guidelines/design/icon-framed.svg">
+    <link rel="icon" type="image/png" href="https://storage.googleapis.com/pr-newsroom-wp/1/2023/05/Spotify_Primary_Logo_RGB_Green.png">
     <style>
         :root {
             --sidebar-width: 220px;
@@ -213,6 +213,61 @@
 
         table tr:hover {
             background: #f8f9fa;
+        }
+
+        /* Sortable table headers */
+        th.sortable {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            padding-right: 1.5rem !important;
+        }
+        th.sortable:hover {
+            background: #eef0f2;
+        }
+        th.sortable::after {
+            content: '\2195';
+            position: absolute;
+            right: 0.35rem;
+            top: 50%;
+            transform: translateY(-50%);
+            opacity: 0.3;
+            font-size: 0.75rem;
+        }
+        th.sortable.asc::after {
+            content: '\25B2';
+            opacity: 0.7;
+        }
+        th.sortable.desc::after {
+            content: '\25BC';
+            opacity: 0.7;
+        }
+
+        /* Scrollable card with fixed header */
+        .scroll-card {
+            display: flex;
+            flex-direction: column;
+            max-height: calc(100vh - 6rem);
+            padding: 0;
+        }
+        .scroll-card-header {
+            padding: 1.5rem;
+            flex-shrink: 0;
+        }
+        .scroll-card-header h2 {
+            margin-bottom: 0;
+        }
+        .scroll-card-body {
+            flex: 1;
+            overflow-y: auto;
+        }
+        .scroll-card-body table {
+            margin-top: 0;
+        }
+        .scroll-card-body thead th {
+            position: sticky;
+            top: 0;
+            z-index: 5;
         }
 
         .badge {
@@ -672,6 +727,42 @@
     <main class="content">
         {% block content %}{% endblock %}
     </main>
+
+    <script>
+    function initTableSort(tableId) {
+        var table = document.getElementById(tableId);
+        if (!table || table.dataset.sortInit) return;
+        table.dataset.sortInit = '1';
+        var thead = table.querySelector('thead');
+        var tbody = table.querySelector('tbody');
+        if (!thead || !tbody) return;
+        var ths = thead.querySelectorAll('th.sortable');
+        ths.forEach(function(th) {
+            th.addEventListener('click', function() {
+                var colIndex = Array.from(th.parentElement.children).indexOf(th);
+                var type = th.getAttribute('data-type') || 'string';
+                var isAsc = !th.classList.contains('asc');
+                ths.forEach(function(h) { h.classList.remove('asc', 'desc'); });
+                th.classList.add(isAsc ? 'asc' : 'desc');
+                var rows = Array.from(tbody.querySelectorAll('tr'));
+                rows.sort(function(a, b) {
+                    var aVal = (a.cells[colIndex].getAttribute('data-value') || a.cells[colIndex].textContent).trim();
+                    var bVal = (b.cells[colIndex].getAttribute('data-value') || b.cells[colIndex].textContent).trim();
+                    var result;
+                    if (type === 'number') {
+                        result = (parseFloat(aVal) || 0) - (parseFloat(bVal) || 0);
+                    } else if (type === 'date') {
+                        result = new Date(aVal) - new Date(bVal);
+                    } else {
+                        result = aVal.localeCompare(bVal);
+                    }
+                    return isAsc ? result : -result;
+                });
+                rows.forEach(function(row) { tbody.appendChild(row); });
+            });
+        });
+    }
+    </script>
 
     {% block extra_js %}{% endblock %}
 </body>

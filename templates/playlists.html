@@ -12,55 +12,52 @@
     </div>
 </div>
 {% else %}
-<div class="card">
-    <h2>Your Playlists ({{ playlists|length }})</h2>
+<div class="card scroll-card">
+    <div class="scroll-card-header">
+        <h2>Your Playlists ({{ playlists|length }})</h2>
+    </div>
     {% if playlists %}
-    <table>
-        <thead>
-            <tr>
-                <th>Image</th>
-                <th>Name</th>
-                <th>Owner</th>
-                <th>Tracks</th>
-                <th>Visibility</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for playlist in playlists %}
-            <tr>
-                <td>
-                    {% if playlist.images and playlist.images|length > 0 %}
-                    <img src="{{ playlist.images[0].url }}" alt="{{ playlist.name }}" class="playlist-image">
-                    {% else %}
-                    <div class="playlist-image" style="background: #1db954; display: flex; align-items: center; justify-content: center; color: white; font-size: 1.5rem;">&#127925;</div>
-                    {% endif %}
-                </td>
-                <td>
-                    <a href="{{ playlist.external_urls.spotify }}" target="_blank" class="playlist-link">
-                        {{ playlist.name }}
-                    </a>
-                </td>
-                <td>{{ playlist.owner.display_name }}</td>
-                <td>
-                    {% if playlist.items and playlist.items.total is not none %}
-                        {{ playlist.items.total }}
-                    {% elif playlist.tracks and playlist.tracks.total is not none %}
-                        {{ playlist.tracks.total }}
-                    {% else %}
-                        N/A
-                    {% endif %}
-                </td>
-                <td>
-                    {% if playlist.public %}
-                    <span class="badge badge-public">Public</span>
-                    {% else %}
-                    <span class="badge badge-private">Private</span>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="scroll-card-body">
+        <table id="playlistTable">
+            <thead>
+                <tr>
+                    <th>Image</th>
+                    <th class="sortable" data-type="string">Name</th>
+                    <th class="sortable" data-type="string">Owner</th>
+                    <th class="sortable" data-type="number">Tracks</th>
+                    <th class="sortable" data-type="string">Visibility</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for playlist in playlists %}
+                {% set track_count = playlist.items.total if (playlist.items and playlist.items.total is not none) else (playlist.tracks.total if (playlist.tracks and playlist.tracks.total is not none) else 0) %}
+                <tr>
+                    <td>
+                        {% if playlist.images and playlist.images|length > 0 %}
+                        <img src="{{ playlist.images[0].url }}" alt="{{ playlist.name }}" class="playlist-image">
+                        {% else %}
+                        <div class="playlist-image" style="background: #1db954; display: flex; align-items: center; justify-content: center; color: white; font-size: 1.5rem;">&#127925;</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ playlist.external_urls.spotify }}" target="_blank" class="playlist-link">
+                            {{ playlist.name }}
+                        </a>
+                    </td>
+                    <td>{{ playlist.owner.display_name }}</td>
+                    <td data-value="{{ track_count }}">{{ track_count }}</td>
+                    <td data-value="{{ 'Public' if playlist.public else 'Private' }}">
+                        {% if playlist.public %}
+                        <span class="badge badge-public">Public</span>
+                        {% else %}
+                        <span class="badge badge-private">Private</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
     {% else %}
     <div class="empty-state">
         <h3>No Playlists Found</h3>
@@ -69,4 +66,10 @@
     {% endif %}
 </div>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    initTableSort('playlistTable');
+</script>
 {% endblock %}

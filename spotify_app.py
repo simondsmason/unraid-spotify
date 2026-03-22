@@ -34,6 +34,9 @@ Change History:
 1.16 - 2026-03-07 - Live progress updates during rule execution: per-playlist status for Backup All, step-by-step for Run Preset and Snapshot
 1.17 - 2026-03-07 - Snapshots redesign: playlist grid view, click-through to detail with track list, snapshot version dropdown, restore/delete per snapshot
 1.18 - 2026-03-07 - Moved snapshot storage from appdata to media volume (/mnt/user/media/Audio/spotify-backups/) via BACKUPS_DIR env var
+1.19 - 2026-03-17 - Consolidate instruction files into CLAUDE.md
+1.20 - 2026-03-22 - Snapshots list changed from grid to scrolling table; sortable columns on Playlists and Snapshots pages; sticky column headers; snapshot detail buttons moved to top with fixed header
+1.21 - 2026-03-22 - Added Spotify green icon as favicon and Docker container icon for Unraid dashboard
 """
 
 import datetime
@@ -59,7 +62,7 @@ from fastapi.templating import Jinja2Templates
 import uvicorn
 
 # Version
-VERSION = "1.18"
+VERSION = "1.21"
 
 # Logging setup
 logger = logging.getLogger("spotify_app")
